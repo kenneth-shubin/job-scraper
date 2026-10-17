@@ -152,10 +152,14 @@ class Store:
         source: str | None = None,
         query: str | None = None,
         application: str | None = None,
+        since: datetime | None = None,
         limit: int = 100,
     ) -> list[StoredJob]:
         clauses = ["keyword_status = 'matched'"]
         params: list[object] = []
+        if since is not None:
+            clauses.append("published_at >= ?")
+            params.append(to_iso(since))
         if application in {"direct", "job_board"}:
             clauses.append("apply_url_type = ?")
             params.append(application)

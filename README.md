@@ -15,7 +15,7 @@ uv run latam-jobs serve
 
 Open `http://127.0.0.1:8080` and enter `DASHBOARD_PASSWORD`. The jobs page works with notifications disabled. `latam-jobs run` does not need the password.
 
-A new job is stored only when its publication time is within the last 24 hours. Jobs already in the database stay listed and are still refreshed. The jobs page sorts by publication time. Listings with a separate company or ATS URL show Apply Directly; every row still links to the original posting. The status block above the filters shows the last collector run and each source. Times use the display timezone from the settings page, which defaults to `America/Bogota`.
+A new job is stored only when its publication time is within the last 24 hours. The jobs page lists only those recent jobs, sorted by publication time. Older stored jobs stay in the database and are still refreshed, but they are not shown. Listings with a separate company or ATS URL show Apply Directly; every row still links to the original posting. The jobs page shows when jobs were last checked, how many new jobs that check stored, and a Check for jobs button that runs the collector. Times use the display timezone from the settings page, which defaults to `America/Bogota`.
 
 ## Telegram
 

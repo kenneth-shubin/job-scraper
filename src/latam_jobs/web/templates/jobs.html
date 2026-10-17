@@ -3,7 +3,7 @@
 <section class="panel">
   <h1>Jobs</h1>
   {% include "status_summary.html" %}
-  <form class="filters" method="get" action="/"
+  <form id="job-filters" class="filters" method="get" action="/"
         hx-get="/jobs/rows"
         hx-target="#job-table"
         hx-trigger="change, submit"
@@ -35,7 +35,11 @@
     </label>
     <button type="submit">Apply</button>
   </form>
-  <div id="job-table">
+  <div id="job-table"
+       hx-get="/jobs/rows"
+       hx-include="#job-filters"
+       hx-trigger="refreshJobs from:body"
+       hx-swap="innerHTML">
     {% include "jobs_rows.html" %}
   </div>
 </section>

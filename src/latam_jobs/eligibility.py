@@ -164,6 +164,10 @@ def classify_eligibility(job: Job, settings: Settings) -> tuple[LatamEligibility
             "on-site and hybrid jobs are excluded",
         )
 
+    structured = _structured_countries(job)
+    if structured:
+        return _allow_list(structured, residence)
+
     combined = _normalize("\n".join((job.title, job.location_text, job.description)))
     exception = _worldwide_exception(combined, residence)
     if _has_non_latam_restriction(combined):
@@ -175,10 +179,6 @@ def classify_eligibility(job: Job, settings: Settings) -> tuple[LatamEligibility
         )
     if exception is not None:
         return exception
-
-    structured = _structured_countries(job)
-    if structured:
-        return _allow_list(structured, residence)
 
     exclusive_sets = _exclusive_country_sets(f"{job.location_text}\n{job.description}")
     if len(exclusive_sets) > 1:

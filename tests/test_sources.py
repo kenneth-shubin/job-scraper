@@ -45,6 +45,25 @@ def test_himalayas_maps_locations_and_skips_bad_items() -> None:
     assert "<" not in result.jobs[0].description
 
 
+def test_himalayas_does_not_list_every_country() -> None:
+    payload = {
+        "jobs": [
+            {
+                "title": "Backend",
+                "applicationLink": "https://himalayas.app/jobs/backend",
+                "guid": "backend",
+                "companyName": "Example",
+                "description": "Python",
+                "locationRestrictions": ["Argentina", "Brazil", "Chile", "Colombia", "Peru"],
+            }
+        ]
+    }
+    result = HimalayasSource().fetch(_context(_client(payload)))
+    job = result.jobs[0]
+    assert job.location_text == "5 countries"
+    assert job.location_countries == ("argentina", "brazil", "chile", "colombia", "peru")
+
+
 def test_himalayas_keeps_its_page_cap_and_does_not_send_a_date_filter() -> None:
     seen: list[httpx.URL] = []
 
@@ -98,6 +117,10 @@ def test_getonboard_maps_modality_and_company() -> None:
     assert hybrid.remote_status is RemoteStatus.HYBRID
     assert hybrid.location_countries == ("chile",)
     assert hybrid.company == "Bci"
+    assert (
+        hybrid.url
+        == "https://www.getonbrd.com/jobs/programming/technical-lead-senior-bci-santiago-3e19"
+    )
     assert remote.remote_status is RemoteStatus.REMOTE
     assert remote.location_text == "Worldwide"
     assert remote.location_countries == ()

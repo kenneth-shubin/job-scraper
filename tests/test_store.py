@@ -311,6 +311,8 @@ def test_recent_publication_window(tmp_path: Path) -> None:
     listed = store.list_jobs(eligibility="accepted")
     assert listed[0].source_job_id == "2h"
     assert any(job.title == "Stored earlier" for job in listed)
+    recent_only = store.list_jobs(eligibility="accepted", since=NOW - timedelta(hours=24))
+    assert [job.source_job_id for job in recent_only] == ["2h", "23h", "edge"]
     store.close()
 
 

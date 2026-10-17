@@ -113,9 +113,15 @@ a { color: var(--accent); }
 
 .actions { display: flex; flex-direction: column; gap: 0.2rem; white-space: nowrap; }
 
-.status-bar { margin-bottom: 1.2rem; }
+.run-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.8rem 1.4rem;
+  margin-bottom: 1.2rem;
+}
 
-.status-facts { margin: 0 0 0.8rem; padding-left: 1.1rem; }
+.run-bar p, .run-bar form { margin: 0; }
 
 .logout { margin: 0; }
 

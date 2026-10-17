@@ -15,6 +15,7 @@ import logging
 from datetime import UTC, datetime
 
 from latam_jobs.geo import country_slug
+from latam_jobs.locations import country_list_label
 from latam_jobs.models import Job
 from latam_jobs.sources.base import FetchContext, FetchResult, SourceError
 from latam_jobs.text import html_to_text
@@ -155,7 +156,7 @@ def _location(raw: object) -> tuple[str, tuple[str, ...]]:
         slugs.append(_slug(name))
     if not names:
         return "Worldwide", ()
-    return ", ".join(names), tuple(dict.fromkeys(slugs))
+    return country_list_label(names), tuple(dict.fromkeys(slugs))
 
 
 def _restriction_name(entry: object) -> str:

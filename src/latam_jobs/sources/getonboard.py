@@ -14,6 +14,7 @@ import logging
 from datetime import UTC, datetime
 
 from latam_jobs.geo import country_slug
+from latam_jobs.locations import country_list_label
 from latam_jobs.models import Job, RemoteStatus
 from latam_jobs.sources.base import FetchContext, FetchResult, SourceError
 from latam_jobs.text import html_to_text
@@ -98,6 +99,7 @@ def _parse_job(item: object) -> Job | None:
         return None
     if not isinstance(public_url, str) or not public_url.strip():
         return None
+    public_url = _listing_url(public_url.strip(), attributes.get("category_name"))
     description = attributes.get("description")
     location_text, countries = _location(attributes)
     modality = attributes.get("remote_modality")
@@ -111,7 +113,7 @@ def _parse_job(item: object) -> Job | None:
         source_job_id=source_id.strip(),
         title=title.strip(),
         company=_company(attributes.get("company")),
-        url=public_url.strip(),
+        url=public_url,
         description=html_to_text(description) if isinstance(description, str) else "",
         location_text=location_text,
         location_countries=countries,
@@ -119,6 +121,16 @@ def _parse_job(item: object) -> Job | None:
         published_at=_unix_time(attributes.get("published_at")),
         remote_status=remote_status,
     )
+
+
+def _listing_url(public_url: str, category_name: object) -> str:
+    if not isinstance(category_name, str) or not category_name.strip():
+        return public_url
+    category = category_name.strip().casefold().replace(" ", "-")
+    marker = "/jobs/"
+    if f"{marker}{category}/" in public_url or marker not in public_url:
+        return public_url
+    return public_url.replace(marker, f"{marker}{category}/", 1)
 
 
 def _company(value: object) -> str:
@@ -152,10 +164,7 @@ def _location(attributes: dict[str, object]) -> tuple[str, tuple[str, ...]]:
     if modality == "fully_remote" and not slugs:
         return zone or "Worldwide", ()
     if names:
-        text = ", ".join(names)
-        if zone:
-            text = f"{zone}: {text}"
-        return text, slugs
+        return country_list_label(names, zone=zone), slugs
     return zone or "Remote", ()
 
 

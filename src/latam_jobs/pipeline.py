@@ -11,6 +11,7 @@ from random import Random
 from latam_jobs.eligibility import classify_eligibility, resolve_remote_status
 from latam_jobs.filters import match_keywords
 from latam_jobs.http import HttpClient, HttpError
+from latam_jobs.locations import location_label
 from latam_jobs.models import Job, KeywordStatus
 from latam_jobs.notify import deliver_notifications
 from latam_jobs.scheduler import (
@@ -48,6 +49,7 @@ def collect(
     *,
     only_source: str | None = None,
     dry_run: bool = False,
+    ignore_schedule: bool = False,
     registry: dict[str, JobSource] | None = None,
     client: HttpClient | None = None,
     now: datetime | None = None,
@@ -80,7 +82,12 @@ def collect(
             if source_settings is None:
                 continue
             schedule = store.get_schedule(name) if store is not None else None
-            if only_source is None and store is not None and not is_due(schedule, moment):
+            if (
+                only_source is None
+                and not ignore_schedule
+                and store is not None
+                and not is_due(schedule, moment)
+            ):
                 logger.info("source %s is not due", name)
                 continue
             try:
@@ -168,7 +175,9 @@ def annotate(job: Job, settings: Settings) -> Job:
 
 def format_job(job: Job) -> str:
     salary = f"\nSalary: {job.salary}" if job.salary else ""
-    location = job.location_text or "Location not provided"
+    location = location_label(job.location_text, job.location_countries)
+    if location == "—":
+        location = "Location not provided"
     eligibility = job.latam_eligibility.value if job.latam_eligibility else "unclassified"
     return (
         f"[{job.source}] {job.title}\n"

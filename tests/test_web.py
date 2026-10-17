@@ -1,5 +1,6 @@
 import argparse
 import re
+import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from latam_jobs.cli import _cmd_serve
 from latam_jobs.models import ApplyUrlType, Job, KeywordStatus, LatamEligibility, RemoteStatus
 from latam_jobs.settings import DatabaseSettings, Settings, SourceSettings
 from latam_jobs.sources import SOURCES
+from latam_jobs.sources.base import FetchContext, FetchResult
 from latam_jobs.sources.remotive import RemotiveSource
 from latam_jobs.store import Store
 from latam_jobs.web.app import create_app
@@ -32,6 +34,7 @@ def _job(
     location_text: str = "Worldwide",
     location_countries: tuple[str, ...] = (),
     eligibility: LatamEligibility = LatamEligibility.ACCEPTED,
+    published_at: datetime | None = None,
 ) -> Job:
     return Job(
         source=source,
@@ -47,7 +50,7 @@ def _job(
         eligibility_reason="stored before the latest settings",
         keyword_status=KeywordStatus.MATCHED,
         keyword_reason="matched 'backend' in title",
-        published_at=NOW,
+        published_at=published_at or datetime.now(UTC),
     )
 
 
@@ -177,7 +180,8 @@ def test_settings_save_reclassifies_and_invalid_country_is_kept(tmp_path: Path) 
     _save(client, residence_country="colombia", keywords="backend")
     rejected = client.get("/?eligibility=rejected")
     assert "Brazil only backend" in rejected.text
-    assert "restricted to brazil" in rejected.text
+    assert "restricted to brazil" not in rejected.text
+    assert "<th>Reason</th>" not in rejected.text
     accepted = client.get("/")
     assert "Brazil only backend" not in accepted.text
 
@@ -194,12 +198,9 @@ def test_registry_source_appears_without_a_template_change(tmp_path: Path) -> No
     registry = {"remotive": RemotiveSource(), "example": ExampleSource()}
     client, store, _bootstrap = _open(tmp_path, registry)
     settings = client.get("/settings")
-    status = client.get("/status")
     assert "example" in settings.text
     assert "remotive" in settings.text
-    assert "example" in status.text
-    assert "Never" in status.text
-    assert "Disabled" in status.text
+    assert client.get("/status", follow_redirects=False).headers["location"] == "/"
     store.close()
 
 
@@ -212,6 +213,50 @@ def test_settings_post_without_csrf_does_not_write(tmp_path: Path) -> None:
     )
     assert response.status_code == 403
     assert store.load_or_seed(bootstrap).residence_country == "colombia"
+    store.close()
+
+
+def test_jobs_page_hides_posts_older_than_one_day(tmp_path: Path) -> None:
+    client, store, _bootstrap = _open(tmp_path)
+    old_at = datetime.now(UTC) - timedelta(days=6)
+    store.upsert_jobs(
+        [
+            _job(
+                source_job_id="old",
+                title="Six day backend",
+                url="https://example.com/jobs/old",
+                published_at=old_at,
+            )
+        ],
+        old_at,
+    )
+    store.upsert_jobs(
+        [_job(source_job_id="fresh", title="Fresh backend", url="https://example.com/jobs/fresh")],
+        datetime.now(UTC),
+    )
+    page = client.get("/")
+    assert "Fresh backend" in page.text
+    assert "Six day backend" not in page.text
+    assert 'href="https://example.com/jobs/fresh"' in page.text
+    store.close()
+
+
+def test_many_countries_are_not_listed_in_the_location_column(tmp_path: Path) -> None:
+    client, store, _bootstrap = _open(tmp_path)
+    store.upsert_jobs(
+        [
+            _job(
+                title="Regional backend",
+                url="https://example.com/jobs/region",
+                location_text="Argentina, Brazil, Chile, Colombia, Peru",
+                location_countries=("argentina", "brazil", "chile", "colombia", "peru"),
+            )
+        ],
+        NOW,
+    )
+    page = client.get("/")
+    assert "5 countries" in page.text
+    assert "Argentina, Brazil, Chile, Colombia, Peru" not in page.text
     store.close()
 
 
@@ -254,16 +299,17 @@ def test_jobs_page_shows_apply_links_and_run_status(tmp_path: Path) -> None:
 
     quiet = client.get("/")
     assert quiet.status_code == 200
-    assert "Job Scraper Status" in quiet.text
-    assert 'hx-trigger="every 60s"' in quiet.text
+    assert "Job Scraper Status" not in quiet.text
+    assert "Next scheduled check" not in quiet.text
+    assert "Check for jobs" in quiet.text
+    assert 'hx-trigger="every 15s"' in quiet.text
+    assert "Last checked: Never" in quiet.text
     assert "New jobs found: 0" in quiet.text
-    assert "Scraper status: Never" in quiet.text
     assert "Apply Directly" in quiet.text
     assert "Apply on Job Board" in quiet.text
     assert "View Original Job" in quiet.text
-    assert 'target="_blank"' in quiet.text
-    assert 'rel="noopener noreferrer"' in quiet.text
     assert "https://boards.greenhouse.io/acme/jobs/1" in quiet.text
+    assert 'target="_blank"' not in quiet.text
 
     only_direct = client.get("/?application=direct")
     assert "Direct backend" in only_direct.text
@@ -298,39 +344,56 @@ def test_jobs_page_shows_apply_links_and_run_status(tmp_path: Path) -> None:
     )
     status = client.get("/status/summary")
     assert "New jobs found: 2" in status.text
-    assert "Scraper status: Success" in status.text
+    assert "Last checked:" in status.text
     assert "Oct 17, 2026, 10:00 AM" in status.text
-    assert "Oct 17, 2026, 12:00 PM" in status.text
-    example = re.search(r"<td>example</td>(.*?)</tr>", status.text, re.S)
-    assert example is not None
-    assert "<td>Disabled</td>" in example.group(1)
-    remotive = re.search(r"<td>remotive</td>(.*?)</tr>", status.text, re.S)
-    assert remotive is not None
-    assert "<td>Success</td>" in remotive.group(1)
+    assert "Scraper status" not in status.text
+    assert "Next scheduled check" not in status.text
+    store.close()
 
-    store.record_failure(
-        "remotive",
-        now=NOW + timedelta(hours=3),
-        backoff_until=NOW + timedelta(days=1),
-        status_code=500,
-        error="HTTP 500",
-        previous=store.get_schedule("remotive"),
+
+def test_check_button_runs_enabled_sources_now(tmp_path: Path) -> None:
+    started = threading.Event()
+    release = threading.Event()
+    calls: list[str] = []
+
+    class Probe:
+        name = "probe"
+        default_interval_hours = 12
+        default_enabled = True
+
+        def fetch(self, ctx: FetchContext) -> FetchResult:
+            calls.append("probe")
+            started.set()
+            assert release.wait(timeout=5)
+            return FetchResult(jobs=[], status_code=200)
+
+    client, store, bootstrap = _open(tmp_path, {"probe": Probe()})
+    current = store.load_or_seed(bootstrap)
+    store.save_settings(
+        current.model_copy(
+            update={"sources": {"probe": SourceSettings(enabled=True, interval_hours=12)}}
+        ),
+        bootstrap=bootstrap,
     )
-    store.record_run(
-        started_at=NOW + timedelta(hours=3),
-        finished_at=NOW + timedelta(hours=3),
-        outcome="failed",
-        new_jobs=0,
-        sources_ok=0,
-        sources_failed=1,
-    )
-    failed = client.get("/")
-    failed_row = re.search(r"<td>remotive</td>(.*?)</tr>", failed.text, re.S)
-    assert failed_row is not None
-    assert "<td>Failed</td>" in failed_row.group(1)
-    assert "Scraper status: Failed" in failed.text
-    assert "Last successful collection:" in failed.text
-    assert "Oct 17, 2026, 10:00 AM" in failed.text
+    denied = client.post("/jobs/run", data={}, follow_redirects=False)
+    assert denied.status_code == 403
+
+    first = client.post("/jobs/run", data={"csrf_token": _csrf(client)}, follow_redirects=False)
+    assert first.status_code == 200
+    assert "Checking for jobs." in first.text
+    assert started.wait(timeout=5)
+    second = client.post("/jobs/run", data={"csrf_token": _csrf(client)}, follow_redirects=False)
+    assert "A check is already running." in second.text
+    release.set()
+    thread = client.app.state.collector_thread
+    assert thread is not None
+    thread.join(timeout=5)
+    assert calls == ["probe"]
+    client.post("/jobs/run", data={"csrf_token": _csrf(client)}, follow_redirects=False)
+    follow = client.app.state.collector_thread
+    assert follow is not None
+    follow.join(timeout=5)
+    assert calls == ["probe", "probe"]
     store.close()
 
 

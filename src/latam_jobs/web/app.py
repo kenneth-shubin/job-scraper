@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import secrets
+import threading
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -15,9 +18,10 @@ from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
 from latam_jobs.geo import COUNTRIES
+from latam_jobs.locations import location_label
 from latam_jobs.models import ApplyUrlType, Job, RemoteStatus
-from latam_jobs.pipeline import annotate
-from latam_jobs.scheduler import earliest_next_fetch, from_iso, utc_now
+from latam_jobs.pipeline import annotate, collect
+from latam_jobs.scheduler import LockError, RunLock, from_iso, utc_now
 from latam_jobs.settings import ConfigError, Settings, merge_registered_sources
 from latam_jobs.store import Store, StoredJob
 from latam_jobs.web.auth import (
@@ -29,11 +33,12 @@ from latam_jobs.web.auth import (
 )
 from latam_jobs.web.timefmt import format_when
 
+logger = logging.getLogger(__name__)
 _PACKAGE = Path(__file__).parent
 _templates = Jinja2Templates(directory=str(_PACKAGE / "templates"))
+_templates.env.globals["location_label"] = location_label
 _COOKIE = "latam_jobs_csrf"
 _OPEN_PATHS = {"/login", "/logout"}
-_OUTCOMES = {"success": "Success", "partial": "Partial failure", "failed": "Failed"}
 
 
 def create_app(
@@ -53,6 +58,11 @@ def create_app(
     app.state.registry = registry
     app.state.secret = secret
     app.state.password = password
+    app.state.collector = threading.Lock()
+    app.state.collector_thread = None
+    app.state.collector_message = ""
+    app.state.collect_finished = 0
+    app.state.collect_announced = 0
 
     @app.middleware("http")
     async def require_session(request: Request, call_next):  # type: ignore[no-untyped-def]
@@ -178,22 +188,22 @@ def create_app(
         reclassify_stored_jobs(store, updated)
         return RedirectResponse("/settings?saved=1", status_code=303)
 
-    @app.get("/status", response_class=HTMLResponse)
-    def status_page(request: Request) -> Response:
-        return _page(
-            request,
-            secret,
-            "status.html",
-            {"title": "Status", **_status_context(app)},
-        )
+    @app.get("/status")
+    def status_page() -> Response:
+        return RedirectResponse("/", status_code=303)
+
+    @app.post("/jobs/run")
+    async def run_collection(request: Request) -> Response:
+        form = await request.form()
+        token = str(form.get("csrf_token") or "")
+        if not _csrf_matches(secret, token, request.cookies.get(_COOKIE)):
+            return HTMLResponse("Invalid CSRF token.", status_code=403)
+        message = _start_collection(app)
+        return _summary_response(request, app, message=message)
 
     @app.get("/status/summary", response_class=HTMLResponse)
     def status_summary(request: Request) -> Response:
-        return _templates.TemplateResponse(
-            request,
-            "status_summary.html",
-            _status_context(app),
-        )
+        return _summary_response(request, app)
 
     return app
 
@@ -222,6 +232,7 @@ def _matching_jobs(
         source=source or None,
         query=query or None,
         application=None if application == "all" else application,
+        since=utc_now() - timedelta(hours=24),
         limit=200,
     )
 
@@ -241,49 +252,73 @@ def _filters(request: Request) -> tuple[str, str, str, str]:
     )
 
 
+def _start_collection(app: FastAPI) -> str:
+    if not app.state.collector.acquire(blocking=False):
+        return "A check is already running."
+    app.state.collector_message = "Checking for jobs."
+
+    def work() -> None:
+        try:
+            settings = _current_settings(app)
+            lock = RunLock(Path(settings.database.path).with_suffix(".lock"))
+            try:
+                lock.acquire()
+            except LockError:
+                app.state.collector_message = "A check is already running."
+                return
+            try:
+                collect(
+                    settings,
+                    registry=app.state.registry,
+                    ignore_schedule=True,
+                )
+            finally:
+                lock.release()
+            app.state.collector_message = ""
+        except Exception:
+            logger.exception("dashboard collection failed")
+            app.state.collector_message = "The check failed. See the server log."
+        finally:
+            app.state.collect_finished += 1
+            app.state.collector.release()
+
+    thread = threading.Thread(target=work, name="latam-jobs-run", daemon=True)
+    app.state.collector_thread = thread
+    thread.start()
+    return "Checking for jobs."
+
+
+def _summary_response(request: Request, app: FastAPI, *, message: str | None = None) -> Response:
+    secret = app.state.secret
+    nonce, cookie = _csrf_pair(request, secret)
+    context = _status_context(app)
+    context["csrf_token"] = nonce
+    if message is not None:
+        context["run_message"] = message
+    response = _templates.TemplateResponse(request, "status_summary.html", context)
+    if cookie is not None:
+        _set_csrf(response, cookie)
+    if (
+        app.state.collect_finished != app.state.collect_announced
+        and not app.state.collector.locked()
+    ):
+        app.state.collect_announced = app.state.collect_finished
+        response.headers["HX-Trigger"] = "refreshJobs"
+    return response
+
+
 def _status_context(app: FastAPI) -> dict[str, Any]:
     settings = _current_settings(app)
     store: Store = app.state.store
-    now = utc_now()
-    timezone = settings.display_timezone
     latest = store.latest_run()
-    success = store.latest_successful_run()
-    enabled = {name for name, source in settings.sources.items() if source.enabled}
-    next_check = earliest_next_fetch(store.list_schedules(), enabled)
-    rows = []
-    for name in app.state.registry:
-        source = settings.sources.get(name)
-        schedule = store.get_schedule(name)
-        enabled_source = source is not None and source.enabled
-        if not enabled_source:
-            label = "Disabled"
-        elif schedule is None:
-            label = "Never"
-        elif schedule.consecutive_failures:
-            label = "Failed"
-        else:
-            label = "Success"
-        rows.append(
-            {
-                "name": name,
-                "last_checked": format_when(
-                    None if schedule is None else schedule.last_attempt_at, timezone, now
-                ),
-                "next_check": format_when(
-                    None if schedule is None else schedule.next_fetch_at, timezone, now
-                ),
-                "status": label,
-            }
-        )
     return {
-        "last_checked": format_when(None if latest is None else latest.finished_at, timezone, now),
-        "next_check": format_when(next_check, timezone, now),
-        "last_success": format_when(
-            None if success is None else success.finished_at, timezone, now
+        "last_checked": format_when(
+            None if latest is None else latest.finished_at,
+            settings.display_timezone,
+            utc_now(),
         ),
         "new_jobs": 0 if latest is None else latest.new_jobs,
-        "outcome": "Never" if latest is None else _OUTCOMES.get(latest.outcome, latest.outcome),
-        "source_rows": rows,
+        "run_message": app.state.collector_message,
     }
 
 

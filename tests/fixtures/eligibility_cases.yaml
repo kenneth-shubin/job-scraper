@@ -208,6 +208,15 @@
   expect_eligibility: rejected
   expect_reason: "rejected:country_allow_list:colombia: restricted to brazil, which does not include colombia"
 
+- id: structured_brazil_overrides_global_wording
+  residence_country: colombia
+  title: Senior Software Engineer, Back End, Accounting & Treasury
+  location_text: Brazil
+  description: Most global businesses operate across borders. Candidates based outside the US may be employed through an employer of record.
+  location_countries: [brazil]
+  expect_eligibility: rejected
+  expect_reason: "rejected:country_allow_list:colombia: restricted to brazil, which does not include colombia"
+
 - id: structured_colombia_and_mexico
   residence_country: colombia
   title: Backend Engineer

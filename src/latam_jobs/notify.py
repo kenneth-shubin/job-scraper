@@ -9,6 +9,7 @@ from datetime import datetime
 
 import httpx
 
+from latam_jobs.locations import location_label
 from latam_jobs.scheduler import utc_now
 from latam_jobs.settings import Settings
 from latam_jobs.store import Store, StoredJob
@@ -92,7 +93,9 @@ def _record_failure(store: Store, batch: list[StoredJob]) -> None:
 
 
 def _item(job: StoredJob) -> str:
-    location = job.location_text or "Location not provided"
+    location = location_label(job.location_text, job.location_countries)
+    if location == "—":
+        location = "Location not provided"
     return f"{job.title}\n{job.company}\n{location}\n{job.source}\n{job.url}"
 
 

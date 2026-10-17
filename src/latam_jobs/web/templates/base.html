@@ -13,7 +13,6 @@
     <nav>
       <a href="/">Jobs</a>
       <a href="/settings">Settings</a>
-      <a href="/status">Status</a>
       {% if csrf_token is defined %}
       <form method="post" action="/logout" class="logout">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
