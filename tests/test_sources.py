@@ -9,6 +9,7 @@ from latam_jobs.settings import SourceSettings
 from latam_jobs.sources.base import FetchContext, SourceError
 from latam_jobs.sources.getonboard import GetOnBoardSource
 from latam_jobs.sources.himalayas import HimalayasSource
+from latam_jobs.sources.remoteok import RemoteOkSource
 from latam_jobs.sources.wwr import WwrSource
 
 FIXTURES = Path("tests/fixtures")
@@ -115,3 +116,30 @@ def test_wwr_empty_and_malformed_entry() -> None:
         pass
     else:
         raise AssertionError("expected a non-feed to fail")
+
+
+def test_remoteok_skips_legal_notice_and_keeps_location() -> None:
+    payload = json.loads((FIXTURES / "remoteok_jobs.json").read_text(encoding="utf-8"))
+    result = RemoteOkSource().fetch(_context(_client(payload)))
+    locations = {job.location_text for job in result.jobs}
+    assert "Worldwide" in locations
+    assert "LATAM" in locations
+    assert "United States" in locations
+    assert all(job.source == "remoteok" for job in result.jobs)
+    assert result.skipped_items == 0
+
+
+def test_remoteok_empty_and_malformed() -> None:
+    legal = [{"legal": "link back", "last_updated": 1}]
+    empty = RemoteOkSource().fetch(_context(_client(legal)))
+    assert empty.jobs == []
+    payload = [{"id": 1, "company": "Example"}]
+    result = RemoteOkSource().fetch(_context(_client(payload)))
+    assert result.jobs == []
+    assert result.skipped_items == 1
+    try:
+        RemoteOkSource().fetch(_context(_client({"jobs": []})))
+    except SourceError:
+        pass
+    else:
+        raise AssertionError("expected a non-list Remote OK document to fail")
