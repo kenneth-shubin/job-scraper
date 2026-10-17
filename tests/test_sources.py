@@ -97,6 +97,49 @@ def test_himalayas_keeps_its_page_cap_and_does_not_send_a_date_filter() -> None:
     assert all("published" not in str(url) for url in seen)
 
 
+def test_himalayas_sends_each_keyword_as_the_query() -> None:
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.params["q"])
+        return httpx.Response(200, json={"jobs": []})
+
+    client = HttpClient(
+        timeout=5, max_retries=0, transport=httpx.MockTransport(handler), sleeper=lambda _s: None
+    )
+    HimalayasSource().fetch(
+        FetchContext(
+            client=client,
+            settings=SourceSettings(enabled=True, max_pages=1),
+            search_terms=("python", "react"),
+        )
+    )
+    assert seen == ["python", "react"]
+
+
+def test_getonboard_searches_remote_jobs_for_each_keyword() -> None:
+    seen: list[tuple[str, str, str | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(
+            (request.url.path, request.url.params["query"], request.url.params.get("remote"))
+        )
+        return httpx.Response(200, json={"data": [], "meta": {"page": 1, "total_pages": 1}})
+
+    client = HttpClient(
+        timeout=5, max_retries=0, transport=httpx.MockTransport(handler), sleeper=lambda _s: None
+    )
+    GetOnBoardSource().fetch(
+        FetchContext(
+            client=client,
+            settings=SourceSettings(enabled=True, max_pages=1),
+            search_terms=("backend",),
+            remote_only=True,
+        )
+    )
+    assert seen == [("/api/v0/search/jobs", "backend", "true")]
+
+
 def test_himalayas_empty_and_malformed() -> None:
     empty = HimalayasSource().fetch(_context(_client({"jobs": []})))
     assert empty.jobs == []

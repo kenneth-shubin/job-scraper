@@ -78,6 +78,26 @@ def test_jobicy_maps_a_board_listing_and_follows_the_cursor() -> None:
     assert job.description == "Python"
 
 
+def test_jobicy_searches_latam_for_each_keyword() -> None:
+    seen: list[dict[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(dict(request.url.params))
+        return httpx.Response(200, json={"jobs": [], "hasMore": False})
+
+    JobicySource().fetch(
+        FetchContext(
+            client=_client(handler),
+            settings=SourceSettings(enabled=True, max_pages=1),
+            search_terms=("python", "django"),
+        )
+    )
+    assert seen == [
+        {"count": "50", "geo": "latam", "tag": "python"},
+        {"count": "50", "geo": "latam", "tag": "django"},
+    ]
+
+
 def test_jobicy_without_an_external_url_stays_a_job_board() -> None:
     payload = {
         "jobs": [
@@ -155,7 +175,8 @@ def test_greenhouse_keeps_a_good_board_when_another_is_missing() -> None:
                         "company_name": "GitLab",
                         "content": "<p>Python</p>",
                         "location": {"name": "Remote, Colombia"},
-                        "first_published": "2026-10-17T12:00:00-04:00",
+                        "first_published": "2026-05-08T11:54:53-04:00",
+                        "updated_at": "2026-10-14T14:00:02-04:00",
                     },
                     {"id": None},
                 ]
@@ -170,8 +191,7 @@ def test_greenhouse_keeps_a_good_board_when_another_is_missing() -> None:
     assert job.apply_url is None
     assert job.remote_status is RemoteStatus.REMOTE
     assert job.company == "GitLab"
-    assert job.published_at is not None
-    assert job.published_at.tzinfo is not None
+    assert job.published_at == datetime(2026, 10, 14, 18, 0, 2, tzinfo=UTC)
 
 
 def test_greenhouse_fails_when_every_board_fails() -> None:
@@ -240,6 +260,64 @@ def test_greenhouse_without_boards_makes_no_requests() -> None:
 
     result = GreenhouseSource().fetch(_context(_client(handler), feeds=[]))
     assert result.jobs == []
+
+
+def test_collect_checks_a_greenhouse_board_found_on_an_aggregator(tmp_path) -> None:
+    moment = datetime(2026, 10, 17, 15, tzinfo=UTC)
+
+    class Aggregator:
+        name = "jobicy"
+        default_interval_hours = 12
+        default_enabled = True
+
+        def fetch(self, ctx: FetchContext) -> FetchResult:
+            return FetchResult(
+                jobs=[
+                    Job(
+                        source="jobicy",
+                        source_job_id="1",
+                        title="Senior Rust Engineer",
+                        company="Acme",
+                        url="https://jobicy.com/jobs/1",
+                        description="Apply at https://boards.greenhouse.io/acme/jobs/42",
+                        location_text="Worldwide",
+                        published_at=moment,
+                        latam_eligibility=LatamEligibility.ACCEPTED,
+                        keyword_status=KeywordStatus.MATCHED,
+                    )
+                ]
+            )
+
+    class Board:
+        name = "greenhouse"
+        default_interval_hours = 24
+        default_enabled = True
+        feeds: list[str] = []
+
+        def fetch(self, ctx: FetchContext) -> FetchResult:
+            self.feeds = list(ctx.settings.feeds)
+            return FetchResult(jobs=[])
+
+    board = Board()
+    database = tmp_path / "jobs.sqlite"
+    settings = settings_from_mapping(
+        {
+            "keywords": ["rust"],
+            "database": {"path": str(database)},
+            "scheduler": {"jitter_seconds": 0},
+            "sources": {
+                "jobicy": {"enabled": True, "interval_hours": 12},
+                "greenhouse": {"enabled": True, "interval_hours": 24, "feeds": []},
+            },
+        }
+    )
+    collect(
+        settings,
+        registry={"jobicy": Aggregator(), "greenhouse": board},
+        now=moment,
+        ignore_schedule=True,
+    )
+    assert board.feeds == ["acme"]
 
 
 def test_collect_stores_the_ats_opening_on_the_aggregator_job(tmp_path) -> None:

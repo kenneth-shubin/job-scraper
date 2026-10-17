@@ -1,10 +1,10 @@
 """Greenhouse public job board API.
 
 Verified endpoint: GET https://boards-api.greenhouse.io/v1/boards/{board}/jobs
-Board tokens come from application links discovered on the other sources.
-`absolute_url` is that company's Greenhouse posting, so the row can show View
-Original Job. A board that returns 404 is skipped. The source fails only when
-every discovered board fails.
+Board tokens come from settings and from Greenhouse links found on the other
+sources. `absolute_url` is that company's Greenhouse posting. A repost uses the
+later of `updated_at` and `first_published`. A board that returns 404 is
+skipped. The source fails only when every requested board fails.
 """
 
 from __future__ import annotations
@@ -23,9 +23,17 @@ logger = logging.getLogger(__name__)
 class GreenhouseSource:
     name = "greenhouse"
     default_interval_hours = 24
-    default_enabled = False
+    default_enabled = True
     default_url = "https://boards-api.greenhouse.io/v1/boards/{board}/jobs"
-    default_feeds = ()
+    default_feeds = (
+        "goodwaygroup",
+        "gitlab",
+        "cloudflare",
+        "discord",
+        "figma",
+        "intercom",
+        "airtable",
+    )
     default_max_pages = 1
 
     def fetch(self, ctx: FetchContext) -> FetchResult:
@@ -99,9 +107,16 @@ def _parse_job(board: str, item: object) -> Job | None:
         apply_url_type=apply_url_type,
         description=html_to_text(description) if isinstance(description, str) else "",
         location_text=location_name.strip() if isinstance(location_name, str) else "",
-        published_at=_iso(item.get("first_published") or item.get("updated_at")),
+        published_at=_later(item.get("updated_at"), item.get("first_published")),
         remote_status=RemoteStatus.REMOTE if remote else RemoteStatus.UNKNOWN,
     )
+
+
+def _later(updated: object, first_published: object) -> datetime | None:
+    dates = [item for item in (_iso(updated), _iso(first_published)) if item is not None]
+    if not dates:
+        return None
+    return max(dates)
 
 
 def _iso(value: object) -> datetime | None:

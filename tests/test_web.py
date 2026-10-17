@@ -14,6 +14,7 @@ from latam_jobs.sources.base import FetchContext, FetchResult
 from latam_jobs.sources.remotive import RemotiveSource
 from latam_jobs.store import Store
 from latam_jobs.web.app import create_app
+from latam_jobs.web.timefmt import format_posted
 
 NOW = datetime(2026, 10, 17, 15, 0, tzinfo=UTC)
 
@@ -130,6 +131,8 @@ def test_jobs_page_defaults_to_accepted_and_filters(tmp_path: Path) -> None:
     assert accepted.status_code == 200
     assert "Worldwide backend" in accepted.text
     assert "Brazil only backend" not in accepted.text
+    assert "<th>Eligibility</th>" not in accepted.text
+    assert ">Eligibility<" not in accepted.text
 
     rejected = client.get("/?eligibility=rejected")
     assert "Brazil only backend" in rejected.text
@@ -216,9 +219,11 @@ def test_settings_post_without_csrf_does_not_write(tmp_path: Path) -> None:
     store.close()
 
 
-def test_jobs_page_hides_posts_older_than_one_day(tmp_path: Path) -> None:
+def test_show_filter_is_one_or_three_days_and_older_jobs_are_removed(tmp_path: Path) -> None:
     client, store, _bootstrap = _open(tmp_path)
-    old_at = datetime.now(UTC) - timedelta(days=6)
+    now = datetime.now(UTC)
+    old_at = now - timedelta(days=6)
+    recent_at = now - timedelta(days=2)
     store.upsert_jobs(
         [
             _job(
@@ -231,13 +236,31 @@ def test_jobs_page_hides_posts_older_than_one_day(tmp_path: Path) -> None:
         old_at,
     )
     store.upsert_jobs(
+        [
+            _job(
+                source_job_id="recent",
+                title="Two day backend",
+                url="https://example.com/jobs/recent",
+                published_at=recent_at,
+            )
+        ],
+        recent_at,
+    )
+    store.upsert_jobs(
         [_job(source_job_id="fresh", title="Fresh backend", url="https://example.com/jobs/fresh")],
-        datetime.now(UTC),
+        now,
     )
     page = client.get("/")
+    assert "Last 24 hours" in page.text
+    assert "Last 3 days" in page.text
     assert "Fresh backend" in page.text
+    assert "Two day backend" not in page.text
     assert "Six day backend" not in page.text
-    assert 'href="https://example.com/jobs/fresh"' in page.text
+    assert store.get_job("remotive", "old") is None
+    three_days = client.get("/jobs/rows?posted=3d")
+    assert "Fresh backend" in three_days.text
+    assert "Two day backend" in three_days.text
+    assert "Six day backend" not in three_days.text
     store.close()
 
 
@@ -316,7 +339,8 @@ def test_jobs_page_shows_apply_links_and_run_status(tmp_path: Path) -> None:
     assert "Last checked: Never" in quiet.text
     assert "New jobs found: 0" in quiet.text
     assert "<th>Posted</th>" in quiet.text
-    assert "Oct 17, 2026, 10:00 AM" in quiet.text
+    assert format_posted(NOW, "America/Bogota", datetime.now(UTC)) in quiet.text
+    assert "Oct 17, 2026, 10:00 AM" not in quiet.text
     assert "Apply Directly" in quiet.text
     assert "Apply on Job Board" in quiet.text
     assert "View Original Job" in quiet.text

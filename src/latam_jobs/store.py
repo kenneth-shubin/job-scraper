@@ -138,6 +138,41 @@ class Store:
             raise
         return inserted
 
+    def delete_expired_jobs(self, now: datetime, *, days: int = 4) -> int:
+        """Remove jobs posted more than `days` ago."""
+        cutoff = to_iso(now - timedelta(days=days))
+        cursor = self._conn.execute(
+            """
+            DELETE FROM jobs
+            WHERE COALESCE(published_at, discovered_at) < ?
+            """,
+            (cutoff,),
+        )
+        self._conn.commit()
+        return int(cursor.rowcount)
+
+    def remember_boards(self, boards: dict[str, set[str]], now: datetime) -> None:
+        seen = to_iso(now)
+        for platform, names in boards.items():
+            for name in sorted(names):
+                self._conn.execute(
+                    """
+                    INSERT INTO ats_boards (platform, board, first_seen_at, last_seen_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(platform, board) DO UPDATE SET
+                        last_seen_at = excluded.last_seen_at
+                    """,
+                    (platform, name, seen, seen),
+                )
+        self._conn.commit()
+
+    def list_boards(self, platform: str) -> list[str]:
+        rows = self._conn.execute(
+            "SELECT board FROM ats_boards WHERE platform = ? ORDER BY board",
+            (platform,),
+        ).fetchall()
+        return [str(row["board"]) for row in rows]
+
     def count_jobs(self) -> int:
         row = self._conn.execute("SELECT COUNT(*) AS count FROM jobs").fetchone()
         return int(row["count"])
@@ -562,6 +597,9 @@ for _name in (
     "load_or_seed",
     "save_settings",
     "upsert_jobs",
+    "delete_expired_jobs",
+    "remember_boards",
+    "list_boards",
     "count_jobs",
     "get_job",
     "list_jobs",
@@ -664,7 +702,7 @@ def _collector_run(row: sqlite3.Row) -> CollectorRun:
 def _within_recent_window(published: datetime | None, now: datetime) -> bool:
     if published is None or published.tzinfo is None:
         return False
-    return published >= now - timedelta(hours=24)
+    return published >= now - timedelta(days=4)
 
 
 def _sql_statements(script: str) -> list[str]:

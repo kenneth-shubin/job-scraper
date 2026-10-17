@@ -7,9 +7,10 @@ import hmac
 import logging
 import secrets
 import threading
-from datetime import timedelta
+from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -129,18 +130,27 @@ def create_app(
 
     @app.get("/", response_class=HTMLResponse)
     def jobs_page(request: Request) -> Response:
-        eligibility, source, query, application = _filters(request)
+        eligibility, source, query, application, posted = _filters(request)
         return _page(
             request,
             secret,
             "jobs.html",
             {
                 "title": "Jobs",
-                "jobs": _matching_jobs(store, eligibility, source, query, application),
+                "jobs": _matching_jobs(
+                    store,
+                    eligibility,
+                    source,
+                    query,
+                    application,
+                    posted,
+                    _current_settings(app).display_timezone,
+                ),
                 "eligibility": eligibility,
                 "source": source,
                 "query": query,
                 "application": application,
+                "posted": posted,
                 "sources": list(registry),
                 **_status_context(app),
                 **_clock(app),
@@ -149,12 +159,20 @@ def create_app(
 
     @app.get("/jobs/rows", response_class=HTMLResponse)
     def job_rows(request: Request) -> Response:
-        eligibility, source, query, application = _filters(request)
+        eligibility, source, query, application, posted = _filters(request)
         return _templates.TemplateResponse(
             request,
             "jobs_rows.html",
             {
-                "jobs": _matching_jobs(store, eligibility, source, query, application),
+                "jobs": _matching_jobs(
+                    store,
+                    eligibility,
+                    source,
+                    query,
+                    application,
+                    posted,
+                    _current_settings(app).display_timezone,
+                ),
                 **_clock(app),
             },
         )
@@ -225,35 +243,55 @@ def _current_settings(app: FastAPI) -> Settings:
     return merge_registered_sources(stored, app.state.registry)
 
 
+_SHOW_WINDOWS = {"24h", "3d"}
+
+
 def _matching_jobs(
     store: Store,
     eligibility: str,
     source: str,
     query: str,
     application: str,
+    posted: str,
+    timezone_name: str,
 ) -> list[StoredJob]:
+    now = utc_now()
+    store.delete_expired_jobs(now)
     return store.list_jobs(
         eligibility=None if eligibility == "all" else eligibility,
         source=source or None,
         query=query or None,
         application=None if application == "all" else application,
-        since=utc_now() - timedelta(hours=24),
-        limit=200,
+        since=_posted_since(posted, now, timezone_name),
+        limit=500,
     )
 
 
-def _filters(request: Request) -> tuple[str, str, str, str]:
+def _posted_since(posted: str, now: datetime, timezone_name: str) -> datetime:
+    if posted == "24h":
+        return now - timedelta(hours=24)
+    zone = ZoneInfo(timezone_name)
+    local_now = now.astimezone(zone)
+    start = datetime.combine(local_now.date() - timedelta(days=3), time.min, tzinfo=zone)
+    return start.astimezone(UTC)
+
+
+def _filters(request: Request) -> tuple[str, str, str, str, str]:
     eligibility = request.query_params.get("eligibility") or "accepted"
     if eligibility not in {"accepted", "rejected", "maybe", "all"}:
         eligibility = "accepted"
     application = request.query_params.get("application") or "all"
     if application not in {"all", "direct", "job_board"}:
         application = "all"
+    posted = request.query_params.get("posted") or "24h"
+    if posted not in _SHOW_WINDOWS:
+        posted = "24h"
     return (
         eligibility,
         request.query_params.get("source") or "",
         request.query_params.get("q") or "",
         application,
+        posted,
     )
 
 

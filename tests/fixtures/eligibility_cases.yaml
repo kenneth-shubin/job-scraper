@@ -301,6 +301,22 @@
   expect_eligibility: rejected
   expect_reason: "rejected:non_latam_residency:colombia: explicit residency restriction outside Latin America"
 
+- id: live_in_colombia_and_neighbors
+  residence_country: colombia
+  title: Global Data Engineer
+  location_text: Remote
+  description: We are targeting individuals that live in Brazil, Colombia, and Mexico.
+  expect_eligibility: accepted
+  expect_reason: "accepted:country_allow_list:colombia: allowed countries include colombia"
+
+- id: live_in_peru_only_list
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Remote
+  description: We are targeting individuals that live in Peru and Brazil.
+  expect_eligibility: rejected
+  expect_reason: "rejected:country_allow_list:colombia: restricted to brazil, peru, which does not include colombia"
+
 - id: us_customers_do_not_reject
   residence_country: colombia
   title: Backend Engineer

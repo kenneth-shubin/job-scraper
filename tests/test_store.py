@@ -295,12 +295,18 @@ def test_recent_publication_window(tmp_path: Path) -> None:
                 url="https://example.com/25",
                 published_at=NOW - timedelta(hours=25),
             ),
+            _job(
+                source_job_id="5d",
+                url="https://example.com/5d",
+                published_at=NOW - timedelta(days=5),
+            ),
             _job(source_job_id="missing", url="https://example.com/missing", published_at=None),
         ],
         NOW,
     )
-    assert skipped == 0
-    assert store.get_job("remotive", "25h") is None
+    assert skipped == 1
+    assert store.get_job("remotive", "25h") is not None
+    assert store.get_job("remotive", "5d") is None
     then = NOW - timedelta(days=10)
     assert (
         store.upsert_jobs(
