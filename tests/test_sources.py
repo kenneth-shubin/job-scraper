@@ -9,6 +9,7 @@ from latam_jobs.settings import SourceSettings
 from latam_jobs.sources.base import FetchContext, SourceError
 from latam_jobs.sources.getonboard import GetOnBoardSource
 from latam_jobs.sources.himalayas import HimalayasSource
+from latam_jobs.sources.wwr import WwrSource
 
 FIXTURES = Path("tests/fixtures")
 
@@ -81,3 +82,36 @@ def test_getonboard_empty_and_malformed() -> None:
         pass
     else:
         raise AssertionError("expected a malformed Get on Board document to fail")
+
+
+def test_wwr_parses_region_and_company() -> None:
+    xml = (FIXTURES / "wwr_programming.xml").read_text(encoding="utf-8")
+    result = WwrSource().fetch(
+        _context(_client(xml, json_body=False), feeds=["https://weworkremotely.com/example.rss"])
+    )
+    assert len(result.jobs) == 2
+    first = result.jobs[0]
+    assert first.company == "Humane World for Animals"
+    assert first.title == "Web Designer, eCRM"
+    assert first.location_text == "Anywhere in the World"
+    assert first.url.startswith("https://weworkremotely.com/")
+
+
+def test_wwr_empty_and_malformed_entry() -> None:
+    empty_xml = "<rss><channel><title>We Work Remotely</title></channel></rss>"
+    empty = WwrSource().fetch(_context(_client(empty_xml, json_body=False)))
+    assert empty.jobs == []
+    broken = """
+    <rss><channel>
+      <item><title>Example: Engineer</title><region>Worldwide</region></item>
+    </channel></rss>
+    """
+    result = WwrSource().fetch(_context(_client(broken, json_body=False)))
+    assert result.jobs == []
+    assert result.skipped_items == 1
+    try:
+        WwrSource().fetch(_context(_client("not a feed", json_body=False)))
+    except SourceError:
+        pass
+    else:
+        raise AssertionError("expected a non-feed to fail")
