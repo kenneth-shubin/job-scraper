@@ -1,0 +1,129 @@
+"""Ashby public job-board API.
+
+Verified endpoint: GET https://api.ashbyhq.com/posting-api/job-board/{board}
+Board tokens come from application links discovered on the other sources.
+`jobUrl` is the company's Ashby posting. `applyUrl` stays on Ashby unless its
+host differs. A missing board is skipped. The source fails only when every
+discovered board fails.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import UTC, datetime
+
+from latam_jobs.models import Job, RemoteStatus
+from latam_jobs.sources.base import FetchContext, FetchResult, SourceError
+from latam_jobs.text import html_to_text
+from latam_jobs.urls import listing_links
+
+logger = logging.getLogger(__name__)
+
+_WORKPLACE = {
+    "remote": RemoteStatus.REMOTE,
+    "hybrid": RemoteStatus.HYBRID,
+    "onsite": RemoteStatus.ONSITE,
+    "on-site": RemoteStatus.ONSITE,
+}
+
+
+class AshbySource:
+    name = "ashby"
+    default_interval_hours = 24
+    default_enabled = False
+    default_url = "https://api.ashbyhq.com/posting-api/job-board/{board}"
+    default_feeds = ()
+    default_max_pages = 1
+
+    def fetch(self, ctx: FetchContext) -> FetchResult:
+        boards = _names(ctx)
+        if not boards:
+            return FetchResult(jobs=[])
+        template = ctx.settings.url or self.default_url
+        jobs: list[Job] = []
+        skipped = 0
+        failures = 0
+        status_code = None
+        for board in boards:
+            url = template.format(board=board)
+            try:
+                response = ctx.client.get(url)
+            except Exception as exc:
+                failures += 1
+                logger.warning("ashby board %s failed: %s", board, exc)
+                continue
+            status_code = response.status_code
+            try:
+                payload = response.json()
+            except Exception as exc:
+                failures += 1
+                logger.warning("ashby board %s was not JSON: %s", board, exc)
+                continue
+            if not isinstance(payload, dict) or not isinstance(payload.get("jobs"), list):
+                failures += 1
+                logger.warning("ashby board %s has no jobs list", board)
+                continue
+            for item in payload["jobs"]:
+                parsed = _parse_job(board, item)
+                if parsed is None:
+                    skipped += 1
+                    continue
+                jobs.append(parsed)
+        if failures and failures == len(boards):
+            raise SourceError("Ashby boards failed")
+        if skipped:
+            logger.info("ashby skipped %s malformed jobs", skipped)
+        return FetchResult(jobs=jobs, status_code=status_code, skipped_items=skipped)
+
+
+def _names(ctx: FetchContext) -> list[str]:
+    return [item.strip() for item in ctx.settings.feeds if item.strip()]
+
+
+def _parse_job(board: str, item: object) -> Job | None:
+    if not isinstance(item, dict):
+        return None
+    source_id = item.get("id")
+    title = item.get("title")
+    listing = item.get("jobUrl")
+    if source_id in (None, "") or not isinstance(title, str) or not title.strip():
+        return None
+    if not isinstance(listing, str) or not listing.strip():
+        return None
+    location = item.get("location")
+    description = item.get("descriptionPlain") or item.get("descriptionHtml")
+    candidate = item.get("applyUrl") if isinstance(item.get("applyUrl"), str) else None
+    apply_url, apply_url_type = listing_links(listing.strip(), candidate, career=True)
+    workplace = item.get("workplaceType")
+    if item.get("isRemote") is True:
+        remote_status = RemoteStatus.REMOTE
+    elif isinstance(workplace, str):
+        remote_status = _WORKPLACE.get(workplace.casefold(), RemoteStatus.UNKNOWN)
+    else:
+        remote_status = RemoteStatus.UNKNOWN
+    return Job(
+        source="ashby",
+        source_job_id=f"{board}:{source_id}",
+        title=title.strip(),
+        company=board,
+        url=listing.strip(),
+        apply_url=apply_url,
+        apply_url_type=apply_url_type,
+        description=html_to_text(description) if isinstance(description, str) else "",
+        location_text=location.strip() if isinstance(location, str) else "",
+        published_at=_iso(item.get("publishedAt")),
+        remote_status=remote_status,
+    )
+
+
+def _iso(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip().replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)

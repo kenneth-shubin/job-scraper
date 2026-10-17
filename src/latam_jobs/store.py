@@ -122,11 +122,15 @@ class Store:
             raise
 
     def upsert_jobs(self, jobs: list[Job], now: datetime) -> int:
+        """Store jobs and return how many accepted jobs were newly inserted."""
         inserted = 0
         self._conn.execute("BEGIN")
         try:
             for job in jobs:
-                if self._upsert_one(job, now):
+                if (
+                    self._upsert_one(job, now)
+                    and job.latam_eligibility is LatamEligibility.ACCEPTED
+                ):
                     inserted += 1
             self._conn.execute("COMMIT")
         except Exception:

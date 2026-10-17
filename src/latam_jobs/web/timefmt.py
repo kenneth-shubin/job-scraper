@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from latam_jobs.scheduler import from_iso
+
 _MONTHS = (
     "Jan",
     "Feb",
@@ -19,6 +21,13 @@ _MONTHS = (
     "Nov",
     "Dec",
 )
+
+
+def format_posted(value: datetime | str | None, timezone: str, now: datetime) -> str:
+    parsed = from_iso(value) if isinstance(value, str) else value
+    if parsed is None:
+        return "—"
+    return format_when(parsed, timezone, now)
 
 
 def format_when(value: datetime | None, timezone: str, now: datetime) -> str:

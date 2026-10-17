@@ -31,12 +31,13 @@ from latam_jobs.web.auth import (
     passwords_match,
     session_valid,
 )
-from latam_jobs.web.timefmt import format_when
+from latam_jobs.web.timefmt import format_posted, format_when
 
 logger = logging.getLogger(__name__)
 _PACKAGE = Path(__file__).parent
 _templates = Jinja2Templates(directory=str(_PACKAGE / "templates"))
 _templates.env.globals["location_label"] = location_label
+_templates.env.globals["format_posted"] = format_posted
 _COOKIE = "latam_jobs_csrf"
 _OPEN_PATHS = {"/login", "/logout"}
 
@@ -142,6 +143,7 @@ def create_app(
                 "application": application,
                 "sources": list(registry),
                 **_status_context(app),
+                **_clock(app),
             },
         )
 
@@ -151,7 +153,10 @@ def create_app(
         return _templates.TemplateResponse(
             request,
             "jobs_rows.html",
-            {"jobs": _matching_jobs(store, eligibility, source, query, application)},
+            {
+                "jobs": _matching_jobs(store, eligibility, source, query, application),
+                **_clock(app),
+            },
         )
 
     @app.get("/settings", response_class=HTMLResponse)
@@ -305,6 +310,10 @@ def _summary_response(request: Request, app: FastAPI, *, message: str | None = N
         app.state.collect_announced = app.state.collect_finished
         response.headers["HX-Trigger"] = "refreshJobs"
     return response
+
+
+def _clock(app: FastAPI) -> dict[str, Any]:
+    return {"display_timezone": _current_settings(app).display_timezone, "now": utc_now()}
 
 
 def _status_context(app: FastAPI) -> dict[str, Any]:

@@ -29,6 +29,7 @@ class KeywordStatus(StrEnum):
 
 class ApplyUrlType(StrEnum):
     DIRECT = "direct"
+    CAREER = "career"
     JOB_BOARD = "job_board"
     UNKNOWN = "unknown"
 

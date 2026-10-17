@@ -5,10 +5,13 @@ import pytest
 from latam_jobs.cli import main
 from latam_jobs.settings import (
     ConfigError,
+    Settings,
     load_settings,
+    merge_registered_sources,
     settings_from_mapping,
     validate_registered_sources,
 )
+from latam_jobs.sources import SOURCES
 
 SAMPLE = Path("settings.yaml")
 
@@ -21,7 +24,20 @@ def test_sample_file_loads() -> None:
     assert settings.sources["remotive"].interval_hours == 12
     assert settings.sources["himalayas"].interval_hours == 24
     assert settings.sources["remoteok"].enabled is False
+    assert settings.sources["greenhouse"].enabled is False
+    assert settings.sources["lever"].enabled is False
+    assert settings.sources["ashby"].enabled is False
+    assert settings.sources["jobicy"].enabled is True
     assert "python" in settings.keywords
+
+
+def test_new_sources_use_adapter_defaults() -> None:
+    merged = merge_registered_sources(Settings(), SOURCES)
+    assert merged.sources["greenhouse"].enabled is False
+    assert merged.sources["lever"].enabled is False
+    assert merged.sources["ashby"].enabled is False
+    assert merged.sources["jobicy"].max_pages == 2
+    assert merged.sources["remoteok"].enabled is False
 
 
 def test_missing_file(tmp_path: Path) -> None:

@@ -150,6 +150,54 @@
   expect_eligibility: rejected
   expect_reason: "rejected:country_allow_list:brazil: restricted to colombia, which does not include brazil"
 
+- id: colombia_remote
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Colombia - Remote
+  description: Fully remote.
+  expect_eligibility: accepted
+  expect_reason: "accepted:country_allow_list:colombia: allowed countries include colombia"
+
+- id: latam_remote
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: LATAM remote
+  description: Fully remote.
+  expect_eligibility: accepted
+  expect_reason: "accepted:region:colombia: Latin America includes the residence country"
+
+- id: worldwide_remote
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Worldwide remote
+  description: Fully remote.
+  expect_eligibility: accepted
+  expect_reason: "accepted:worldwide:colombia: worldwide includes the residence country"
+
+- id: latam_restricted_to_peru
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: "LATAM, Peru"
+  description: Fully remote.
+  expect_eligibility: rejected
+  expect_reason: "rejected:country_allow_list:colombia: restricted to peru, which does not include colombia"
+
+- id: latam_restricted_to_brazil_and_peru
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Latin America - Brazil and Peru
+  description: Fully remote.
+  expect_eligibility: rejected
+  expect_reason: "rejected:country_allow_list:colombia: restricted to brazil, peru, which does not include colombia"
+
+- id: latam_description_restricted_to_peru
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Latin America
+  description: This remote role is Peru only.
+  expect_eligibility: rejected
+  expect_reason: "rejected:country_allow_list:colombia: restricted to peru, which does not include colombia"
+
 - id: latam_but_brazil_only
   residence_country: colombia
   title: Backend Engineer
@@ -207,6 +255,17 @@
   location_countries: [brazil]
   expect_eligibility: rejected
   expect_reason: "rejected:country_allow_list:colombia: restricted to brazil, which does not include colombia"
+
+- id: usa_location_overrides_global_wording
+  residence_country: colombia
+  title: Senior Manager, AI Engineering
+  location_text: USA
+  description: >
+    HackerOne is a global leader. We're committed to building a global team!
+    For certain roles outside the United States, India, the U.K., and the Netherlands,
+    eligibility may differ. Remote location: Austin, TX or Washington, DC.
+  expect_eligibility: rejected
+  expect_reason: "rejected:country_allow_list:colombia: restricted to united-states, which does not include colombia"
 
 - id: structured_brazil_overrides_global_wording
   residence_country: colombia

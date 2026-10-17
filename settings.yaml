@@ -67,3 +67,33 @@ sources:
     interval_hours: 24
     url: https://remoteok.com/api
     max_pages: 1
+
+  jobicy:
+    enabled: true
+    interval_hours: 12
+    url: https://jobicy.com/api/v2/remote-jobs
+    max_pages: 2
+
+  arbeitnow:
+    enabled: true
+    interval_hours: 12
+    url: https://www.arbeitnow.com/api/job-board-api
+    max_pages: 1
+
+  greenhouse:
+    enabled: false
+    interval_hours: 24
+    url: https://boards-api.greenhouse.io/v1/boards/{board}/jobs
+    max_pages: 1
+
+  lever:
+    enabled: false
+    interval_hours: 24
+    url: https://api.lever.co/v0/postings/{site}
+    max_pages: 1
+
+  ashby:
+    enabled: false
+    interval_hours: 24
+    url: https://api.ashbyhq.com/posting-api/job-board/{board}
+    max_pages: 1

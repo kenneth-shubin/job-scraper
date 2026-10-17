@@ -280,6 +280,14 @@ def test_recent_publication_window(tmp_path: Path) -> None:
         NOW,
     )
     assert inserted == 3
+    rejected = _job(
+        source_job_id="rejected",
+        url="https://example.com/rejected",
+        title="Rejected role",
+    )
+    rejected.latam_eligibility = LatamEligibility.REJECTED
+    assert store.upsert_jobs([rejected], NOW) == 0
+    assert store.get_job("remotive", "rejected") is not None
     skipped = store.upsert_jobs(
         [
             _job(

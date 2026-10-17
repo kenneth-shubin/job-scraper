@@ -4,6 +4,7 @@
       <th>Title</th>
       <th>Company</th>
       <th>Location</th>
+      <th>Posted</th>
       <th>Source</th>
       <th>Eligibility</th>
       <th>Apply</th>
@@ -15,20 +16,25 @@
       <td>{{ job.title }}</td>
       <td>{{ job.company }}</td>
       <td>{{ location_label(job.location_text, job.location_countries) }}</td>
+      <td class="posted">{{ format_posted(job.published_at, display_timezone, now) }}</td>
       <td>{{ job.source }}</td>
       <td><span class="badge {{ job.latam_eligibility }}">{{ job.latam_eligibility }}</span></td>
       <td class="actions">
         {% if job.apply_url_type == "direct" and job.apply_url %}
         <a href="{{ job.apply_url }}">Apply Directly</a>
-        {% else %}
+        {% if job.url %}
+        <a href="{{ job.url }}">View Original Job</a>
+        {% endif %}
+        {% elif job.apply_url_type == "career" and job.url %}
+        <a href="{{ job.url }}">View Original Job</a>
+        {% elif job.url %}
         <a href="{{ job.url }}">Apply on Job Board</a>
         {% endif %}
-        <a href="{{ job.url }}">View Original Job</a>
       </td>
     </tr>
     {% else %}
     <tr>
-      <td colspan="6" class="empty">No matching jobs.</td>
+      <td colspan="7" class="empty">No matching jobs.</td>
     </tr>
     {% endfor %}
   </tbody>

@@ -19,6 +19,15 @@ class _TextExtractor(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in {"p", "br", "li", "div", "tr", "h1", "h2", "h3", "h4"}:
             self.parts.append(" ")
+        if tag != "a":
+            return
+        for key, value in attrs:
+            if (
+                key == "href"
+                and isinstance(value, str)
+                and value.startswith(("http://", "https://"))
+            ):
+                self.parts.append(f" {value} ")
 
 
 def html_to_text(value: str) -> str:

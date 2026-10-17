@@ -31,6 +31,7 @@ from latam_jobs.settings import (
 from latam_jobs.sources import SOURCES
 from latam_jobs.sources.base import FetchContext, JobSource, SourceSnapshot
 from latam_jobs.store import Store, should_store
+from latam_jobs.urls import attach_direct_apply
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,8 @@ def collect(
                     _record_failure(store, name, moment, exc, schedule)
                 runs.append(SourceRun(name=name, error=str(exc)))
                 continue
+            for item in result.jobs:
+                attach_direct_apply(item)
             jobs = [annotate(item, effective) for item in result.jobs]
             visible = [job for job in jobs if _keep(job)]
             if store is not None:

@@ -177,14 +177,17 @@ def validate_registered_sources(settings: Settings, registry: dict[str, Any]) ->
 
 
 def merge_registered_sources(settings: Settings, registry: dict[str, Any]) -> Settings:
-    """Add adapters that are not in the stored document yet, disabled."""
+    """Add adapters that are not in the stored document yet, using their defaults."""
     sources = dict(settings.sources)
     for name, adapter in registry.items():
         if name in sources:
             continue
+        feeds = getattr(adapter, "default_feeds", ())
         sources[name] = SourceSettings(
-            enabled=False,
+            enabled=bool(getattr(adapter, "default_enabled", False)),
             interval_hours=int(getattr(adapter, "default_interval_hours", 24)),
             url=getattr(adapter, "default_url", None),
+            max_pages=int(getattr(adapter, "default_max_pages", 1)),
+            feeds=list(feeds),
         )
     return settings.model_copy(update={"sources": sources})

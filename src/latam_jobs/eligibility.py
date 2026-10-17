@@ -169,7 +169,6 @@ def classify_eligibility(job: Job, settings: Settings) -> tuple[LatamEligibility
         return _allow_list(structured, residence)
 
     combined = _normalize("\n".join((job.title, job.location_text, job.description)))
-    exception = _worldwide_exception(combined, residence)
     if _has_non_latam_restriction(combined):
         return _decision(
             LatamEligibility.REJECTED,
@@ -177,6 +176,10 @@ def classify_eligibility(job: Job, settings: Settings) -> tuple[LatamEligibility
             residence,
             "explicit residency restriction outside Latin America",
         )
+    location = _read_field(job.location_text)
+    if location is not None and location.countries:
+        return _allow_list(location.countries, residence)
+    exception = _worldwide_exception(combined, residence)
     if exception is not None:
         return exception
 
@@ -253,11 +256,7 @@ def _allow_list(countries: frozenset[str], residence: str) -> tuple[LatamEligibi
 
 
 def _from_reading(reading: _FieldReading, residence: str) -> tuple[LatamEligibility, str]:
-    if reading.exclusive and reading.countries:
-        return _allow_list(reading.countries, residence)
-    if reading.countries and residence in reading.countries:
-        return _allow_list(reading.countries, residence)
-    if reading.countries and not _any_region_includes(reading.regions, residence):
+    if reading.countries:
         return _allow_list(reading.countries, residence)
     if "worldwide" in reading.regions:
         return _decision(
@@ -439,10 +438,6 @@ def _region_includes(region: str, residence: str) -> bool:
     if region == "central_america":
         return residence in central_america_slugs()
     return False
-
-
-def _any_region_includes(regions: frozenset[str], residence: str) -> bool:
-    return any(_region_includes(region, residence) for region in regions)
 
 
 def _region_label(region: str) -> str:

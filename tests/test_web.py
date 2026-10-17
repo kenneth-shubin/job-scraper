@@ -287,7 +287,11 @@ def test_jobs_page_shows_apply_links_and_run_status(tmp_path: Path) -> None:
         )
     )
     _unlock(client)
-    direct = _job(title="Direct backend", url="https://remotive.com/jobs/direct")
+    direct = _job(
+        title="Direct backend",
+        url="https://remotive.com/jobs/direct",
+        published_at=NOW,
+    )
     direct.apply_url = "https://boards.greenhouse.io/acme/jobs/1"
     direct.apply_url_type = ApplyUrlType.DIRECT
     board = _job(
@@ -295,7 +299,13 @@ def test_jobs_page_shows_apply_links_and_run_status(tmp_path: Path) -> None:
         title="Board backend",
         url="https://remotive.com/jobs/board",
     )
-    store.upsert_jobs([direct, board], NOW)
+    career = _job(
+        source_job_id="career",
+        title="Career backend",
+        url="https://jobs.lever.co/spotify/abc",
+    )
+    career.apply_url_type = ApplyUrlType.CAREER
+    store.upsert_jobs([direct, board, career], NOW)
 
     quiet = client.get("/")
     assert quiet.status_code == 200
@@ -305,6 +315,8 @@ def test_jobs_page_shows_apply_links_and_run_status(tmp_path: Path) -> None:
     assert 'hx-trigger="every 15s"' in quiet.text
     assert "Last checked: Never" in quiet.text
     assert "New jobs found: 0" in quiet.text
+    assert "<th>Posted</th>" in quiet.text
+    assert "Oct 17, 2026, 10:00 AM" in quiet.text
     assert "Apply Directly" in quiet.text
     assert "Apply on Job Board" in quiet.text
     assert "View Original Job" in quiet.text
@@ -317,6 +329,12 @@ def test_jobs_page_shows_apply_links_and_run_status(tmp_path: Path) -> None:
     only_board = client.get("/jobs/rows?application=job_board")
     assert "Board backend" in only_board.text
     assert "Direct backend" not in only_board.text
+    assert "View Original Job" not in only_board.text
+    career_row = client.get("/jobs/rows?q=Career")
+    assert "View Original Job" in career_row.text
+    assert "https://jobs.lever.co/spotify/abc" in career_row.text
+    assert "Apply on Job Board" not in career_row.text
+    assert "Apply Directly" not in career_row.text
 
     store.record_success(
         "remotive",

@@ -113,6 +113,8 @@ a { color: var(--accent); }
 
 .actions { display: flex; flex-direction: column; gap: 0.2rem; white-space: nowrap; }
 
+.posted { white-space: nowrap; }
+
 .run-bar {
   display: flex;
   flex-wrap: wrap;
