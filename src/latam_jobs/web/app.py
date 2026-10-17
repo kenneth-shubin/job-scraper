@@ -178,6 +178,9 @@ def _settings_from_form(current: Settings, form: Any, registry: dict[str, Any]) 
             "remote_only": form.get("remote_only") == "on",
             "keywords": _keyword_list(str(form.get("keywords") or "")),
             "exclude_keywords": _keyword_list(str(form.get("exclude_keywords") or "")),
+            "notifications": current.notifications.model_copy(
+                update={"enabled": form.get("notifications-enabled") == "on"}
+            ),
             "sources": sources,
         }
     )

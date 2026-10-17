@@ -145,12 +145,19 @@ def test_settings_save_reclassifies_and_invalid_country_is_kept(tmp_path: Path) 
         ],
         NOW,
     )
-    saved = _save(client, residence_country="brazil", keywords="django, react")
+    saved = _save(
+        client,
+        residence_country="brazil",
+        keywords="django, react",
+        **{"notifications-enabled": "on"},
+    )
     assert saved.status_code == 200
     assert "Settings saved" in saved.text
+    assert "Send Telegram alerts" in saved.text
     reloaded = store.load_or_seed(bootstrap)
     assert reloaded.residence_country == "brazil"
     assert reloaded.keywords == ["django", "react"]
+    assert reloaded.notifications.enabled is True
 
     _save(client, residence_country="colombia", keywords="backend")
     rejected = client.get("/?eligibility=rejected")

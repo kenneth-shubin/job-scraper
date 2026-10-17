@@ -12,6 +12,7 @@ from latam_jobs.eligibility import classify_eligibility, resolve_remote_status
 from latam_jobs.filters import match_keywords
 from latam_jobs.http import HttpClient, HttpError
 from latam_jobs.models import Job, KeywordStatus
+from latam_jobs.notify import deliver_notifications
 from latam_jobs.scheduler import (
     SourceSchedule,
     StopFlag,
@@ -120,6 +121,11 @@ def collect(
                     skipped_items=result.skipped_items,
                 )
             )
+        if store is not None:
+            try:
+                deliver_notifications(store, effective, now=moment)
+            except Exception:
+                logger.exception("notification delivery failed")
     finally:
         if owns_client:
             http.close()

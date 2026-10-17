@@ -15,6 +15,12 @@ uv run latam-jobs serve
 
 Open `http://127.0.0.1:8080`. The jobs page works with notifications disabled.
 
+## Telegram
+
+Alerts are off until the dashboard's "Send Telegram alerts" switch is on and both `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set. Only accepted keyword matches that have not been sent are included. Messages are plain text, in batches under 3,500 characters, and a batch is marked sent only after Telegram returns HTTP 200.
+
+A crash after Telegram accepts a batch and before SQLite commits can send that batch again on the next run. That is the at-least-once window, and it is limited to one batch. A failed send stays pending and stops the rest of that run. After five failed attempts the row is marked failed. Rows already marked sent are not selected again. Missing credentials leave every pending row unsent.
+
 `settings.yaml` is only the bootstrap file. The first successful load copies residence country, keywords, and source schedules into SQLite. After that, change those values in the dashboard. The database path and the web bind address still come from the bootstrap file.
 
 ## VPS layout
