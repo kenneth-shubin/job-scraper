@@ -153,6 +153,12 @@ activemq-data/
 .env
 .envrc
 .venv
+
+# Local database and runtime files
+data/
+*.sqlite
+*.sqlite3
+*.sqlite-journal
 env/
 venv/
 ENV/

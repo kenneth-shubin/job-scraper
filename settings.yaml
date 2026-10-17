@@ -1,0 +1,68 @@
+residence_country: colombia
+remote_only: true
+
+keywords:
+  - python
+  - django
+  - react
+  - backend
+
+exclude_keywords:
+  - clearance
+
+eligibility:
+  accepted_only_notifications: true
+  include_maybe_in_storage: true
+  store_rejected: true
+
+scheduler:
+  check_interval_minutes: 60
+  jitter_seconds: 120
+
+http:
+  timeout_seconds: 20
+  max_retries: 2
+
+database:
+  path: data/latam-jobs.sqlite
+
+web:
+  host: 127.0.0.1
+  port: 8080
+
+notifications:
+  enabled: false
+
+sources:
+  remotive:
+    enabled: true
+    interval_hours: 12
+    url: https://remotive.com/api/remote-jobs
+    max_pages: 1
+
+  himalayas:
+    enabled: true
+    interval_hours: 24
+    url: https://himalayas.app/jobs/api/search
+    max_pages: 5
+
+  getonboard:
+    enabled: true
+    interval_hours: 24
+    url: https://www.getonbrd.com/api/v0/search/jobs
+    max_pages: 3
+
+  wwr:
+    enabled: true
+    interval_hours: 12
+    url: https://weworkremotely.com/categories/remote-programming-jobs.rss
+    max_pages: 1
+    feeds:
+      - https://weworkremotely.com/categories/remote-programming-jobs.rss
+      - https://weworkremotely.com/categories/remote-devops-sysadmin-jobs.rss
+
+  remoteok:
+    enabled: false
+    interval_hours: 24
+    url: https://remoteok.com/api
+    max_pages: 1
