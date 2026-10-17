@@ -118,6 +118,7 @@ def test_one_failing_source_does_not_stop_remotive() -> None:
     )
     runs = collect(
         settings,
+        dry_run=True,
         registry={"boom": Boom(), "remotive": RemotiveSource()},
         client=_client(payload),
     )

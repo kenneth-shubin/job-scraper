@@ -1,17 +1,34 @@
-"""Fetch enabled sources and print the jobs they return."""
+"""Fetch enabled sources, classify them, and store the jobs that match."""
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from random import Random
 
 from latam_jobs.eligibility import classify_eligibility, resolve_remote_status
 from latam_jobs.filters import match_keywords
-from latam_jobs.http import HttpClient
+from latam_jobs.http import HttpClient, HttpError
 from latam_jobs.models import Job, KeywordStatus
-from latam_jobs.settings import ConfigError, Settings, validate_registered_sources
+from latam_jobs.scheduler import (
+    SourceSchedule,
+    StopFlag,
+    failure_backoff,
+    is_due,
+    next_success_at,
+    utc_now,
+)
+from latam_jobs.settings import (
+    ConfigError,
+    Settings,
+    merge_registered_sources,
+    validate_registered_sources,
+)
 from latam_jobs.sources import SOURCES
 from latam_jobs.sources.base import FetchContext, JobSource, SourceSnapshot
+from latam_jobs.store import Store, should_store
 
 logger = logging.getLogger(__name__)
 
@@ -29,42 +46,76 @@ def collect(
     settings: Settings,
     *,
     only_source: str | None = None,
+    dry_run: bool = False,
     registry: dict[str, JobSource] | None = None,
     client: HttpClient | None = None,
+    now: datetime | None = None,
+    rng: Random | None = None,
+    stop: StopFlag | None = None,
 ) -> list[SourceRun]:
     adapters = registry if registry is not None else SOURCES
-    selected = _select_sources(settings, adapters, only_source)
+    moment = now or utc_now()
+    randomizer = rng or Random()
+    store: Store | None = None
+    effective = settings
+    if not dry_run:
+        store = Store(Path(settings.database.path))
+        store.migrate()
+        effective = merge_registered_sources(store.load_or_seed(settings), adapters)
+    selected = _select_sources(effective, adapters, only_source)
     owns_client = client is None
     http = client or HttpClient(
-        timeout=settings.http.timeout_seconds,
-        max_retries=settings.http.max_retries,
+        timeout=effective.http.timeout_seconds,
+        max_retries=effective.http.max_retries,
     )
     runs: list[SourceRun] = []
     try:
         for name, adapter in selected:
-            source_settings = settings.sources.get(name)
+            if stop is not None and stop.stopped:
+                logger.info("stopping before source %s", name)
+                break
+            source_settings = effective.sources.get(name)
             if source_settings is None:
+                continue
+            schedule = store.get_schedule(name) if store is not None else None
+            if only_source is None and store is not None and not is_due(schedule, moment):
+                logger.info("source %s is not due", name)
                 continue
             try:
                 result = adapter.fetch(
                     FetchContext(
                         client=http,
                         settings=source_settings,
-                        state=SourceSnapshot(),
+                        state=_snapshot(schedule),
                     )
                 )
             except Exception as exc:
                 logger.exception("source %s failed", name)
+                if store is not None:
+                    _record_failure(store, name, moment, exc, schedule)
                 runs.append(SourceRun(name=name, error=str(exc)))
                 continue
+            jobs = [annotate(item, effective) for item in result.jobs]
+            visible = [job for job in jobs if _keep(job)]
+            if store is not None:
+                store.upsert_jobs([job for job in visible if should_store(job, effective)], moment)
+                store.record_success(
+                    name,
+                    now=moment,
+                    next_fetch_at=next_success_at(
+                        moment,
+                        source_settings.interval_hours,
+                        effective.scheduler.jitter_seconds,
+                        randomizer,
+                    ),
+                    etag=result.etag,
+                    last_modified=result.last_modified,
+                    status_code=result.status_code,
+                )
             runs.append(
                 SourceRun(
                     name=name,
-                    jobs=[
-                        job
-                        for job in (annotate(item, settings) for item in result.jobs)
-                        if _keep(job)
-                    ],
+                    jobs=visible,
                     not_modified=result.not_modified,
                     skipped_items=result.skipped_items,
                 )
@@ -72,6 +123,8 @@ def collect(
     finally:
         if owns_client:
             http.close()
+        if store is not None:
+            store.close()
     return runs
 
 
@@ -105,6 +158,31 @@ def format_job(job: Job) -> str:
 
 def _keep(job: Job) -> bool:
     return job.keyword_status is KeywordStatus.MATCHED
+
+
+def _snapshot(schedule: SourceSchedule | None) -> SourceSnapshot:
+    if schedule is None:
+        return SourceSnapshot()
+    return SourceSnapshot(etag=schedule.etag, last_modified=schedule.last_modified)
+
+
+def _record_failure(
+    store: Store,
+    name: str,
+    now: datetime,
+    exc: Exception,
+    schedule: SourceSchedule | None,
+) -> None:
+    status = exc.status_code if isinstance(exc, HttpError) else None
+    failures = (schedule.consecutive_failures if schedule else 0) + 1
+    store.record_failure(
+        name,
+        now=now,
+        backoff_until=failure_backoff(now, failures, status),
+        status_code=status,
+        error=str(exc),
+        previous=schedule,
+    )
 
 
 def _select_sources(
