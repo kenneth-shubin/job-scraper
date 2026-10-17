@@ -3,9 +3,10 @@
 Verified from https://www.getonbrd.com/api-doc.html and a live response:
 GET https://www.getonbrd.com/api/v0/categories/programming/jobs
 The public API needs no key. No published rate limit was found, so this adapter
-requests at most max_pages with per_page=100. Search also exists, but it requires
-a query or remote filter; the programming category is the bounded feed used here.
-The category payload exposes links.public_url and no separate company or ATS URL.
+requests at most max_pages with per_page=100. Each configured keyword is searched
+on the search endpoint, with remote=true when remote_only is on. With no keywords
+it reads the programming category. The payload exposes links.public_url and no
+separate company or ATS URL.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from latam_jobs.sources.base import FetchContext, FetchResult, SourceError
 from latam_jobs.text import html_to_text
 
 logger = logging.getLogger(__name__)
+_SEARCH_URL = "https://www.getonbrd.com/api/v0/search/jobs"
 
 _MODALITY = {
     "fully_remote": RemoteStatus.REMOTE,
@@ -37,44 +39,52 @@ class GetOnBoardSource:
     default_url = "https://www.getonbrd.com/api/v0/categories/programming/jobs"
 
     def fetch(self, ctx: FetchContext) -> FetchResult:
-        url = ctx.settings.url or self.default_url
+        category_url = ctx.settings.url or self.default_url
         jobs: list[Job] = []
         seen: set[str] = set()
         skipped = 0
         status_code = None
-        for page in range(1, ctx.settings.max_pages + 1):
-            response = ctx.client.get(
-                url,
-                params={
+        terms = _search_terms(ctx.search_terms) or (None,)
+        for term in terms:
+            for page in range(1, ctx.settings.max_pages + 1):
+                params = {
                     "page": str(page),
                     "per_page": "100",
                     "lang": "en",
                     "expand[]": "company",
-                },
-            )
-            status_code = response.status_code
-            payload = _payload(response.json())
-            batch = payload.get("data")
-            if not isinstance(batch, list):
-                raise SourceError("Get on Board document is missing a data list")
-            if not batch:
-                break
-            for item in batch:
-                parsed = _parse_job(item)
-                if parsed is None:
-                    skipped += 1
-                    continue
-                if parsed.source_job_id in seen:
-                    continue
-                seen.add(parsed.source_job_id)
-                jobs.append(parsed)
-            meta = payload.get("meta")
-            total_pages = meta.get("total_pages") if isinstance(meta, dict) else None
-            if isinstance(total_pages, int) and page >= total_pages:
-                break
+                }
+                if term:
+                    params["query"] = term
+                    if ctx.remote_only:
+                        params["remote"] = "true"
+                response = ctx.client.get(_SEARCH_URL if term else category_url, params=params)
+                status_code = response.status_code
+                payload = _payload(response.json())
+                batch = payload.get("data")
+                if not isinstance(batch, list):
+                    raise SourceError("Get on Board document is missing a data list")
+                if not batch:
+                    break
+                for item in batch:
+                    parsed = _parse_job(item)
+                    if parsed is None:
+                        skipped += 1
+                        continue
+                    if parsed.source_job_id in seen:
+                        continue
+                    seen.add(parsed.source_job_id)
+                    jobs.append(parsed)
+                meta = payload.get("meta")
+                total_pages = meta.get("total_pages") if isinstance(meta, dict) else None
+                if isinstance(total_pages, int) and page >= total_pages:
+                    break
         if skipped:
             logger.info("getonboard skipped %s malformed jobs", skipped)
         return FetchResult(jobs=jobs, status_code=status_code, skipped_items=skipped)
+
+
+def _search_terms(terms: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(term.strip() for term in terms if term.strip()))
 
 
 def _payload(value: object) -> dict[str, object]:

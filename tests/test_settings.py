@@ -24,7 +24,8 @@ def test_sample_file_loads() -> None:
     assert settings.sources["remotive"].interval_hours == 12
     assert settings.sources["himalayas"].interval_hours == 24
     assert settings.sources["remoteok"].enabled is False
-    assert settings.sources["greenhouse"].enabled is False
+    assert settings.sources["greenhouse"].enabled is True
+    assert "goodwaygroup" in settings.sources["greenhouse"].feeds
     assert settings.sources["lever"].enabled is False
     assert settings.sources["ashby"].enabled is False
     assert settings.sources["jobicy"].enabled is True
@@ -33,7 +34,8 @@ def test_sample_file_loads() -> None:
 
 def test_new_sources_use_adapter_defaults() -> None:
     merged = merge_registered_sources(Settings(), SOURCES)
-    assert merged.sources["greenhouse"].enabled is False
+    assert merged.sources["greenhouse"].enabled is True
+    assert "goodwaygroup" in merged.sources["greenhouse"].feeds
     assert merged.sources["lever"].enabled is False
     assert merged.sources["ashby"].enabled is False
     assert merged.sources["jobicy"].max_pages == 2

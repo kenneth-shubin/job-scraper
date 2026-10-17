@@ -52,6 +52,19 @@ def classify_apply_link(listing_url: str, candidate: str | None) -> tuple[str | 
     return candidate.strip(), ApplyUrlType.DIRECT
 
 
+def greenhouse_boards(*texts: str) -> set[str]:
+    """Board tokens from Greenhouse posting or board URLs in the given text."""
+    found: set[str] = set()
+    for text in texts:
+        if not text:
+            continue
+        for match in _URLS.finditer(text):
+            token = _greenhouse_board(match.group(0))
+            if token is not None:
+                found.add(token)
+    return found
+
+
 def direct_ats_url(*texts: str) -> str | None:
     """Return one Greenhouse, Lever, or Ashby URL that identifies a single opening."""
     for text in texts:
@@ -103,6 +116,32 @@ def _ats_opening(url: str) -> str | None:
     if host == "jobs.ashbyhq.com" and _ashby_opening(path):
         return url.strip()
     return None
+
+
+def _greenhouse_board(url: str) -> str | None:
+    parts = urlsplit(url.strip())
+    if parts.scheme.lower() not in {"http", "https"} or not parts.hostname:
+        return None
+    host = parts.hostname.casefold().removeprefix("www.")
+    if not host.endswith(".greenhouse.io") and host != "greenhouse.io":
+        return None
+    path = [piece for piece in parts.path.split("/") if piece]
+    if "boards-api." in host or host.startswith("api."):
+        if len(path) >= 3 and path[0] == "v1" and path[1] == "boards":
+            return _board_token(path[2])
+        return None
+    if path:
+        return _board_token(path[0])
+    return _board_token(dict(parse_qsl(parts.query)).get("for", ""))
+
+
+def _board_token(value: str) -> str | None:
+    token = value.strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,80}", token):
+        return None
+    if token.casefold() in {"jobs", "embed", "v1", "boards"}:
+        return None
+    return token
 
 
 def _greenhouse_opening(path: list[str], query: dict[str, str]) -> bool:

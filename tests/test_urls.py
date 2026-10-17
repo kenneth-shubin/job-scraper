@@ -1,5 +1,11 @@
 from latam_jobs.models import ApplyUrlType, Job
-from latam_jobs.urls import attach_direct_apply, canonical_url, classify_apply_link, direct_ats_url
+from latam_jobs.urls import (
+    attach_direct_apply,
+    canonical_url,
+    classify_apply_link,
+    direct_ats_url,
+    greenhouse_boards,
+)
 
 
 def test_strips_tracking_parameters_and_sorts_query() -> None:
@@ -40,6 +46,15 @@ def test_classify_apply_link_requires_a_different_http_host() -> None:
     )
     assert duplicate is None
     assert duplicate_kind is ApplyUrlType.JOB_BOARD
+
+
+def test_greenhouse_board_token_comes_from_a_posting_url() -> None:
+    found = greenhouse_boards(
+        "https://job-boards.greenhouse.io/goodwaygroup/jobs/5991794004?gh_src=abc",
+        "https://boards-api.greenhouse.io/v1/boards/gitlab/jobs",
+        "https://example.com/jobs/1",
+    )
+    assert found == {"goodwaygroup", "gitlab"}
 
 
 def test_direct_ats_url_requires_one_opening() -> None:

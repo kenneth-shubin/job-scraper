@@ -31,7 +31,7 @@ from latam_jobs.settings import (
 from latam_jobs.sources import SOURCES
 from latam_jobs.sources.base import FetchContext, JobSource, SourceSnapshot
 from latam_jobs.store import Store, should_store
-from latam_jobs.urls import attach_direct_apply
+from latam_jobs.urls import attach_direct_apply, greenhouse_boards
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +75,8 @@ def collect(
     runs: list[SourceRun] = []
     inserted = 0
     try:
+        if store is not None:
+            store.delete_expired_jobs(moment)
         for name, adapter in selected:
             if stop is not None and stop.stopped:
                 logger.info("stopping before source %s", name)
@@ -91,12 +93,21 @@ def collect(
             ):
                 logger.info("source %s is not due", name)
                 continue
+            if name == "greenhouse" and store is not None:
+                feeds = list(
+                    dict.fromkeys([*source_settings.feeds, *store.list_boards("greenhouse")])
+                )
+                source_settings = source_settings.model_copy(update={"feeds": feeds})
             try:
                 result = adapter.fetch(
                     FetchContext(
                         client=http,
                         settings=source_settings,
                         state=_snapshot(schedule),
+                        search_terms=tuple(
+                            term.strip() for term in effective.keywords if term.strip()
+                        ),
+                        remote_only=effective.remote_only,
                     )
                 )
             except Exception as exc:
@@ -105,6 +116,14 @@ def collect(
                     _record_failure(store, name, moment, exc, schedule)
                 runs.append(SourceRun(name=name, error=str(exc)))
                 continue
+            if store is not None and name != "greenhouse":
+                found: set[str] = set()
+                for item in result.jobs:
+                    found.update(
+                        greenhouse_boards(item.url, item.apply_url or "", item.description)
+                    )
+                if found:
+                    store.remember_boards({"greenhouse": found}, moment)
             for item in result.jobs:
                 attach_direct_apply(item)
             jobs = [annotate(item, effective) for item in result.jobs]

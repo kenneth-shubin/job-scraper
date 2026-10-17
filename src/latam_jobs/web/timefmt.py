@@ -27,7 +27,7 @@ def format_posted(value: datetime | str | None, timezone: str, now: datetime) ->
     parsed = from_iso(value) if isinstance(value, str) else value
     if parsed is None:
         return "—"
-    return format_when(parsed, timezone, now)
+    return _relative(parsed, now)
 
 
 def format_when(value: datetime | None, timezone: str, now: datetime) -> str:

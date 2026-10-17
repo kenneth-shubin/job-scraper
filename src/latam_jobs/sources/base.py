@@ -40,6 +40,8 @@ class FetchContext:
     client: HttpClient
     settings: SourceSettings
     state: SourceSnapshot = field(default_factory=SourceSnapshot)
+    search_terms: tuple[str, ...] = ()
+    remote_only: bool = True
 
 
 @dataclass

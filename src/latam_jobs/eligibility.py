@@ -126,7 +126,8 @@ _NON_LATAM_PATTERNS = (
     r"\bapac only\b",
 )
 _EXCLUSIVE = re.compile(
-    r"\b(only|restricted to|must be based in|must reside in|must live in|must be located in)\b"
+    r"\b(only|restricted to|must be based in|must reside in|must live in|"
+    r"must be located in|live in)\b"
 )
 _EXCEPT = re.compile(r"\b(except|excluding|outside|other than)\b")
 

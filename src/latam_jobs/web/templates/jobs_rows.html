@@ -6,7 +6,6 @@
       <th>Location</th>
       <th>Posted</th>
       <th>Source</th>
-      <th>Eligibility</th>
       <th>Apply</th>
     </tr>
   </thead>
@@ -18,7 +17,6 @@
       <td>{{ location_label(job.location_text, job.location_countries) }}</td>
       <td class="posted">{{ format_posted(job.published_at, display_timezone, now) }}</td>
       <td>{{ job.source }}</td>
-      <td><span class="badge {{ job.latam_eligibility }}">{{ job.latam_eligibility }}</span></td>
       <td class="actions">
         {% if job.apply_url_type == "direct" and job.apply_url %}
         <a href="{{ job.apply_url }}">Apply Directly</a>
@@ -34,7 +32,7 @@
     </tr>
     {% else %}
     <tr>
-      <td colspan="7" class="empty">No matching jobs.</td>
+      <td colspan="6" class="empty">No matching jobs.</td>
     </tr>
     {% endfor %}
   </tbody>

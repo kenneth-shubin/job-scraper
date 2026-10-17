@@ -8,13 +8,6 @@
         hx-target="#job-table"
         hx-trigger="change, submit"
         hx-push-url="false">
-    <label>Eligibility
-      <select name="eligibility">
-        {% for value in ["accepted", "rejected", "maybe", "all"] %}
-        <option value="{{ value }}" {% if eligibility == value %}selected{% endif %}>{{ value }}</option>
-        {% endfor %}
-      </select>
-    </label>
     <label>Source
       <select name="source">
         <option value="">All sources</option>
@@ -28,6 +21,12 @@
         <option value="all" {% if application == "all" %}selected{% endif %}>All jobs</option>
         <option value="direct" {% if application == "direct" %}selected{% endif %}>Direct application available</option>
         <option value="job_board" {% if application == "job_board" %}selected{% endif %}>Job board only</option>
+      </select>
+    </label>
+    <label>Show
+      <select name="posted">
+        <option value="24h" {% if posted == "24h" %}selected{% endif %}>Last 24 hours</option>
+        <option value="3d" {% if posted == "3d" %}selected{% endif %}>Last 3 days</option>
       </select>
     </label>
     <label>Search
