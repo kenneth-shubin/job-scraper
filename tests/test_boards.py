@@ -183,7 +183,16 @@ def test_greenhouse_keeps_a_good_board_when_another_is_missing() -> None:
             },
         )
 
-    result = GreenhouseSource().fetch(_context(_client(handler), feeds=["gitlab", "missing"]))
+    pauses: list[float] = []
+    result = GreenhouseSource().fetch(
+        FetchContext(
+            client=_client(handler),
+            settings=SourceSettings(enabled=True, feeds=["gitlab", "missing"]),
+            now=datetime(2026, 10, 17, 22, tzinfo=UTC),
+            sleeper=pauses.append,
+        )
+    )
+    assert pauses == [0.25, 0.25]
     assert result.skipped_items == 1
     job = result.jobs[0]
     assert job.source_job_id == "gitlab:9"
@@ -214,7 +223,11 @@ def test_lever_same_host_apply_url_is_a_career_page() -> None:
         }
     ]
     result = LeverSource().fetch(
-        _context(_client(lambda _request: httpx.Response(200, json=payload)), feeds=["spotify"])
+        FetchContext(
+            client=_client(lambda _request: httpx.Response(200, json=payload)),
+            settings=SourceSettings(enabled=True, feeds=["spotify"]),
+            now=datetime.fromtimestamp(1_791_566_108.174, UTC),
+        )
     )
     job = result.jobs[0]
     assert job.url == "https://jobs.lever.co/spotify/abc"
@@ -246,7 +259,14 @@ def test_ashby_uses_a_different_host_apply_url() -> None:
             },
         )
 
-    result = AshbySource().fetch(_context(_client(handler), feeds=["linear", "missing"]))
+    result = AshbySource().fetch(
+        FetchContext(
+            client=_client(handler),
+            settings=SourceSettings(enabled=True, feeds=["linear", "missing"]),
+            now=datetime(2026, 10, 17, 18, tzinfo=UTC),
+            sleeper=lambda _seconds: None,
+        )
+    )
     job = result.jobs[0]
     assert job.apply_url == "https://linear.app/careers/job-1"
     assert job.apply_url_type is ApplyUrlType.DIRECT

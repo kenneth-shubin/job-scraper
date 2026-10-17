@@ -70,6 +70,12 @@ class NotificationSettings(BaseModel):
     enabled: bool = False
 
 
+class AtsCatalogSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    update_online: bool = True
+
+
 class Settings(BaseModel):
     """Bootstrap file and the editable collection document share this shape."""
 
@@ -86,6 +92,7 @@ class Settings(BaseModel):
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     web: WebSettings = Field(default_factory=WebSettings)
     notifications: NotificationSettings = Field(default_factory=NotificationSettings)
+    ats_catalog: AtsCatalogSettings = Field(default_factory=AtsCatalogSettings)
     sources: dict[str, SourceSettings] = Field(default_factory=dict)
 
     @field_validator("residence_country", mode="before")

@@ -29,6 +29,7 @@ packages = ["src/latam_jobs"]
 "src/latam_jobs/migrations" = "latam_jobs/migrations"
 "src/latam_jobs/web/templates" = "latam_jobs/web/templates"
 "src/latam_jobs/web/static" = "latam_jobs/web/static"
+"src/latam_jobs/catalog/ats_companies.json" = "latam_jobs/catalog/ats_companies.json"
 
 [dependency-groups]
 dev = [

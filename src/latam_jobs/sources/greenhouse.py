@@ -1,18 +1,22 @@
 """Greenhouse public job board API.
 
 Verified endpoint: GET https://boards-api.greenhouse.io/v1/boards/{board}/jobs
-Board tokens come from settings and from Greenhouse links found on the other
-sources. `absolute_url` is that company's Greenhouse posting. A repost uses the
-later of `updated_at` and `first_published`. A board that returns 404 is
-skipped. The source fails only when every requested board fails.
+Board tokens come from the local catalog, settings, and links found on the
+other sources. The list call omits job content. A description is requested
+only when the title matches a keyword and the later of `updated_at` and
+`first_published` is inside 4 days. A board that returns 404 is skipped. The
+source fails only when every requested board fails.
 """
 
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
+from latam_jobs.ats_directory import Pacer, targets
+from latam_jobs.filters import title_matches
 from latam_jobs.models import Job, RemoteStatus
+from latam_jobs.scheduler import utc_now
 from latam_jobs.sources.base import FetchContext, FetchResult, SourceError
 from latam_jobs.text import html_to_text
 from latam_jobs.urls import listing_links
@@ -25,30 +29,23 @@ class GreenhouseSource:
     default_interval_hours = 24
     default_enabled = True
     default_url = "https://boards-api.greenhouse.io/v1/boards/{board}/jobs"
-    default_feeds = (
-        "goodwaygroup",
-        "gitlab",
-        "cloudflare",
-        "discord",
-        "figma",
-        "intercom",
-        "airtable",
-    )
+    default_feeds = ()
     default_max_pages = 1
 
     def fetch(self, ctx: FetchContext) -> FetchResult:
-        boards = _boards(ctx)
+        boards = targets("greenhouse", ctx)
         if not boards:
             return FetchResult(jobs=[])
-        template = ctx.settings.url or self.default_url
+        now = ctx.now or utc_now()
+        pacer = Pacer(ctx.sleeper)
         jobs: list[Job] = []
         skipped = 0
         failures = 0
         status_code = None
-        for board in boards:
-            url = template.format(board=board)
+        for board, url in boards:
+            pacer.wait()
             try:
-                response = ctx.client.get(url, params={"content": "true"})
+                response = ctx.client.get(url)
             except Exception as exc:
                 failures += 1
                 logger.warning("greenhouse board %s failed: %s", board, exc)
@@ -65,7 +62,20 @@ class GreenhouseSource:
                 logger.warning("greenhouse board %s has no jobs list", board)
                 continue
             for item in payload["jobs"]:
-                parsed = _parse_job(board, item)
+                if not isinstance(item, dict) or item.get("id") in (None, ""):
+                    skipped += 1
+                    continue
+                if not _listed_recently(item, now, ctx.search_terms):
+                    continue
+                pacer.wait()
+                try:
+                    detail = ctx.client.get(f"{url.rstrip('/')}/{item['id']}")
+                    document = _detail_job(detail.json(), item["id"]) or item
+                except Exception as exc:
+                    skipped += 1
+                    logger.warning("greenhouse job %s/%s failed: %s", board, item.get("id"), exc)
+                    continue
+                parsed = _parse_job(board, document)
                 if parsed is None:
                     skipped += 1
                     continue
@@ -75,10 +85,6 @@ class GreenhouseSource:
         if skipped:
             logger.info("greenhouse skipped %s malformed jobs", skipped)
         return FetchResult(jobs=jobs, status_code=status_code, skipped_items=skipped)
-
-
-def _boards(ctx: FetchContext) -> list[str]:
-    return [item.strip() for item in ctx.settings.feeds if item.strip()]
 
 
 def _parse_job(board: str, item: object) -> Job | None:
@@ -110,6 +116,28 @@ def _parse_job(board: str, item: object) -> Job | None:
         published_at=_later(item.get("updated_at"), item.get("first_published")),
         remote_status=RemoteStatus.REMOTE if remote else RemoteStatus.UNKNOWN,
     )
+
+
+def _listed_recently(item: dict, now: datetime, keywords: tuple[str, ...]) -> bool:
+    title = item.get("title")
+    if not isinstance(title, str) or not title_matches(title, keywords):
+        return False
+    published = _later(item.get("updated_at"), item.get("first_published"))
+    return published is not None and published >= now - timedelta(days=4)
+
+
+def _detail_job(payload: object, job_id: object) -> dict | None:
+    if not isinstance(payload, dict):
+        return None
+    jobs = payload.get("jobs")
+    if isinstance(jobs, list):
+        for item in jobs:
+            if isinstance(item, dict) and str(item.get("id")) == str(job_id):
+                return item
+        return None
+    if payload.get("id") is not None or isinstance(payload.get("content"), str):
+        return payload
+    return None
 
 
 def _later(updated: object, first_published: object) -> datetime | None:
