@@ -52,6 +52,10 @@ class FetchResult:
     skipped_items: int = 0
 
 
+class SourceError(Exception):
+    """A source failed before any jobs could be parsed."""
+
+
 class JobSource(Protocol):
     name: str
     default_interval_hours: int

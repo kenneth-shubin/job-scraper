@@ -3,5 +3,8 @@
 from __future__ import annotations
 
 from latam_jobs.sources.base import JobSource
+from latam_jobs.sources.remotive import RemotiveSource
 
-SOURCES: dict[str, JobSource] = {}
+SOURCES: dict[str, JobSource] = {
+    RemotiveSource.name: RemotiveSource(),
+}
