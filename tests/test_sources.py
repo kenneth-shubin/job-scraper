@@ -4,8 +4,10 @@ from pathlib import Path
 import httpx
 
 from latam_jobs.http import HttpClient
+from latam_jobs.models import RemoteStatus
 from latam_jobs.settings import SourceSettings
 from latam_jobs.sources.base import FetchContext, SourceError
+from latam_jobs.sources.getonboard import GetOnBoardSource
 from latam_jobs.sources.himalayas import HimalayasSource
 
 FIXTURES = Path("tests/fixtures")
@@ -50,3 +52,32 @@ def test_himalayas_empty_and_malformed() -> None:
         assert "jobs list" in str(exc)
     else:
         raise AssertionError("expected a malformed Himalayas document to fail")
+
+
+def test_getonboard_maps_modality_and_company() -> None:
+    payload = json.loads((FIXTURES / "getonboard_jobs.json").read_text(encoding="utf-8"))
+    result = GetOnBoardSource().fetch(_context(_client(payload)))
+    by_id = {job.source_job_id: job for job in result.jobs}
+    hybrid = by_id["technical-lead-senior-bci-santiago-3e19"]
+    remote = by_id["consultor-c4c-lisit-remote"]
+    assert hybrid.remote_status is RemoteStatus.HYBRID
+    assert hybrid.location_countries == ("chile",)
+    assert hybrid.company == "Bci"
+    assert remote.remote_status is RemoteStatus.REMOTE
+    assert remote.location_text == "Worldwide"
+    assert remote.location_countries == ()
+
+
+def test_getonboard_empty_and_malformed() -> None:
+    empty = GetOnBoardSource().fetch(_context(_client({"data": [], "meta": {"total_pages": 0}})))
+    assert empty.jobs == []
+    payload = {"data": [{"id": "missing-url", "attributes": {"title": "No link"}}]}
+    result = GetOnBoardSource().fetch(_context(_client(payload)))
+    assert result.jobs == []
+    assert result.skipped_items == 1
+    try:
+        GetOnBoardSource().fetch(_context(_client(["nope"])))
+    except SourceError:
+        pass
+    else:
+        raise AssertionError("expected a malformed Get on Board document to fail")

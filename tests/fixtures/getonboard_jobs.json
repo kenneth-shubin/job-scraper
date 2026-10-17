@@ -1,0 +1,236 @@
+{
+  "data": [
+    {
+      "id": "technical-lead-senior-bci-santiago-3e19",
+      "type": "job",
+      "attributes": {
+        "title": "Technical Lead Senior",
+        "description_headline": "Requerimientos del cargo",
+        "description": "<ul><li>Titulado de Ingenier\u00eda Inform\u00e1tica, Ingeniero Civil Inform\u00e1tico o afines.</li><li>Experiencia previa en desarrollo/mantenci\u00f3n de software, conocimiento de marco de trabajo en c\u00e9lulas \u00e1giles.</li><li>Desde 5 a\u00f1os de experiencia desarrollo de experiencia en desarrollo de software, ya sea en:</li><li>Desarrollo Back End, utilizando lenguajes como JAVA con framework Springboot, o JavaScript/Ty",
+        "projects": "<p>Responsable de liderar la planificaci\u00f3n y dimensionamiento t\u00e9cnico de proyectos en colaboraci\u00f3n con el equipo de desarrollo, incluyendo a desarrolladores, QA, Integration Lead y Process Lead. Garantiza la m\u00e1xima calidad t\u00e9cnica y funcional en los desarrollos, as\u00ed como la alineaci\u00f3n de las definiciones de la arquitectura empresarial definida, promoviendo pr\u00e1cticas de ingenier\u00eda de seoftware de excelencia.</p>",
+        "functions_headline": "Funciones del cargo",
+        "functions": "<ul><li>Responsable de la calidad t\u00e9cnica: Analizar y gestionar los indicadores de calidad del producto para que cumplan con la calidad esperada</li><li>Garantizar entregas de calidad: Asegurar est\u00e1ndares de calidad t\u00e9cnica en cada release.</li><li>Mentor\u00eda en calidad de desarrollo: Alinear a los desarrolladores para mejorar la calidad y escalabilidad de sus trabajos, fomentando la idea de m\u00ednimas entregas viables.</li><li>Informar sobre lineamientos t\u00e9cnicos: Comunicar al equipo los aspectos t\u00e9cnicos relativos a la arquitectura e ingenier\u00eda de software. Coordinar la integraci\u00f3n entre las distintas capas del desarrollo.</li><li>Gesti\u00f3n de obst\u00e1culos: Identificar, gestionar y ayudar al equipo a superar obst\u00e1culos que surjan durante el ciclo de desarrollo. Tambi\u00e9n traspasar sus conocimientos para que el equipo luego resuelva estos impedimentos.</li><li>Dise\u00f1o de funcionalidades: Ser el punto de referencia t\u00e9cnico para el dise\u00f1o de nuevas funcionalidades a desarrollar.</li><li>Gesti\u00f3n de la deuda t\u00e9cnica: Detectar, seguir y planificar la eliminaci\u00f3n de la deuda t\u00e9cnica, en coordinaci\u00f3n con el equipo de la c\u00e9lula.</li><li>Gesti\u00f3n de \u00f3rdenes de cambio: Gestiona los pasos a Producci\u00f3n y detecta necesidades del mismo.</li><li>Soporte en la Planeaci\u00f3n de Portafolio del Producto (PPP): Provee la informaci\u00f3n necesaria para las diferentes etapas de la Planeaci\u00f3n de Portafolio del Producto y las revisiones trimestrales. </li><li>Experiencia comprobable en coliderazgo t\u00e9cnico y desarrollo Frontend para la creaci\u00f3n e integraci\u00f3n de aplicaciones basadas en Agentes de IA</li></ul>",
+        "benefits_headline": "Condiciones",
+        "benefits": "",
+        "desirable_headline": "Opcionales",
+        "desirable": "",
+        "remote": false,
+        "remote_modality": "hybrid",
+        "remote_zone": null,
+        "countries": [
+          "Chile"
+        ],
+        "lang": "lang_not_specified",
+        "category_name": "Programming",
+        "perks": [],
+        "min_salary": null,
+        "max_salary": null,
+        "published_at": 1792174400,
+        "response_time_in_days": {
+          "min": null,
+          "max": null
+        },
+        "applications_count": 9,
+        "location_regions": {
+          "data": []
+        },
+        "location_tenants": {
+          "data": []
+        },
+        "location_cities": {
+          "data": [
+            {
+              "id": 1,
+              "type": "location_city"
+            }
+          ]
+        },
+        "modality": {
+          "data": {
+            "id": 1,
+            "type": "modality"
+          }
+        },
+        "seniority": {
+          "data": {
+            "id": 4,
+            "type": "seniority"
+          }
+        },
+        "tags": {
+          "data": [
+            {
+              "id": 141,
+              "type": "tag"
+            },
+            {
+              "id": 156,
+              "type": "tag"
+            },
+            {
+              "id": 209,
+              "type": "tag"
+            },
+            {
+              "id": 235,
+              "type": "tag"
+            },
+            {
+              "id": 259,
+              "type": "tag"
+            },
+            {
+              "id": 3794,
+              "type": "tag"
+            },
+            {
+              "id": 7779,
+              "type": "tag"
+            },
+            {
+              "id": 36775,
+              "type": "tag"
+            },
+            {
+              "id": 37027,
+              "type": "tag"
+            },
+            {
+              "id": 86597,
+              "type": "tag"
+            }
+          ]
+        },
+        "company": {
+          "data": {
+            "id": "bci",
+            "type": "company",
+            "attributes": {
+              "name": "Bci",
+              "description": "Bci es una Corporaci\u00f3n de Soluciones Financieras que aspira a ser l\u00edder regional en Innovaci\u00f3n, Cercan\u00eda y Experiencia de Clientes, y ser reconocida como el mejor lugar para trabajar y desarrollarse. ",
+              "long_description": "<p>En Bci nos atrevemos\u2026 Queremos ser l\u00edderes regionales en innovaci\u00f3n, cercan\u00eda, experiencia cliente y ser reconocidos como la mejor empresa para trabajar y desarrollarse. Desde nuestra fundaci\u00f3n en 1937, nacimos con la misi\u00f3n de apoyar a los emprendedores, con una fuerte pasi\u00f3n por simplificar, facilitar y aportar a la vida y la experiencia de miles de clientes y colaboradores, y de contribuir a las comunidades en que nos desenvolvemos. Tenemos una amplia variedad de cargos y pr\u00e1cticas profesionales para que puedas desplegar tu talento, en un contexto de aprendizaje continuo, entretenido, diverso y desafiante\u2026 \u00bfTe atreves a hacer una diferencia? </p>",
+              "projects": "<p>\u00bfTe atreves a hacer una diferencia en la industria financiera? En Bci estamos cambiando la forma de hacer banca y queremos que t\u00fa seas protagonista de esta reinvenci\u00f3n.<br>La principal misi\u00f3n del cargo ser\u00e1 ser protagonista en la administraci\u00f3n e ingesta de datos que impulsan las plataformas y procesos de Gesti\u00f3n de Personas. En este rol ser\u00e1s responsable de integrar, limpiar y transformar datos, asegurando la integridad, continuidad y confidencialidad de la informaci\u00f3n.</p>",
+              "benefits": "<p>\u2022 T\u00edtulo profesional en Psicolog\u00eda, Ingenier\u00eda, Recursos Humanos o carrera af\u00edn.\u2022 Experiencia m\u00ednima de 4 a\u00f1os en dise\u00f1o e implementaci\u00f3n de experiencias formativas\u2022 Ingl\u00e9s oral y escrito intermedio-avanzado\u2022 Experiencia comprobada trabajando con \u00e1reas del negocio en roles de consultor\u00eda interna.\u2022 Manejo y administraci\u00f3n de plataformas LMS/LXP.\u2022 Experiencia en gesti\u00f3n de proveedores y coordinaci\u00f3n de programas de capacitaci\u00f3n.\u2022 Habilidades para gestionar m\u00faltiples proyectos en simult\u00e1neo, con foco en cumplimiento y calidad.\u2022 Alta orientaci\u00f3n al trabajo colaborativo, pensamiento cr\u00edtico y mejora continua.\u2022 Perfil aut\u00f3nomo, proactivo, met\u00f3dico y con fuerte compromiso con los resultados.</p>",
+              "web": "http://www.trabajaenbci.cl",
+              "twitter": "trabajaenbci",
+              "github": "",
+              "facebook": "trabajaenbci",
+              "angellist": "",
+              "country": "CL",
+              "response_time_in_days": {
+                "min": 29,
+                "max": 39
+              },
+              "logo": "https://getonbrd-prod.s3.amazonaws.com/uploads/users/logo/3125/logobci200x200.jpg"
+            }
+          }
+        }
+      },
+      "links": {
+        "public_url": "https://www.getonbrd.com/jobs/technical-lead-senior-bci-santiago-3e19"
+      }
+    },
+    {
+      "id": "consultor-c4c-lisit-remote",
+      "type": "job",
+      "attributes": {
+        "title": "Consultor C4c",
+        "description_headline": "Descripci\u00f3n",
+        "description": "<p>Buscamos un/a Consultor C4C que disfrute trabajar con el negocio y traduzca necesidades reales en soluciones que funcionen en producci\u00f3n. En Lisit valoramos la comunicaci\u00f3n clara, el enfoque en resultados y la capacidad de aprender y mejorar continuamente.</p><p>Requisitos y experiencia:</p><ul><li>Experiencia en proyectos de implementaci\u00f3n o soporte funcional con SAP C/4HANA (Sales/Service u o",
+        "projects": "En Lisit creamos, desarrollamos e implementamos servicios de software orientados a la automatizaci\u00f3n y optimizaci\u00f3n, manteniendo un foco constante en innovaci\u00f3n y pasi\u00f3n por los desaf\u00edos. Nos especializamos en acompa\u00f1amiento consultivo para mejorar la operatividad de nuestros clientes mediante una estrategia integral de transformaci\u00f3n, que combina herramientas, pr\u00e1cticas y acompa\u00f1amiento durante la implementaci\u00f3n. En este rol, formamos parte de proyectos donde el objetivo es dise\u00f1ar, implementar y optimizar soluciones basadas en SAP C/4HANA, asegurando que los procesos de negocio queden alineados a las necesidades del cliente y puedan escalar con eficiencia.",
+        "functions_headline": "Funciones",
+        "functions": "<p>Como Consultor C4C, nuestro objetivo es asegurar que la soluci\u00f3n para el cliente se implemente correctamente, se adapte a los procesos y logre resultados medibles en automatizaci\u00f3n y mejora operativa.</p><ul><li>Levantamiento y an\u00e1lisis de requerimientos del negocio y traducci\u00f3n a configuraci\u00f3n/parametrizaci\u00f3n en SAP C/4HANA (C4C).</li><li>Dise\u00f1o funcional de flujos, procesos y alcances (ventas, servicio y/o procesos comerciales seg\u00fan el proyecto).</li><li>Configuraci\u00f3n funcional y soporte a la implementaci\u00f3n: datos maestros, integraciones funcionales y definici\u00f3n de reglas de negocio.</li><li>Elaboraci\u00f3n de documentaci\u00f3n funcional: especificaciones, descripciones de procesos, casos de prueba y criterios de aceptaci\u00f3n.</li><li>Participaci\u00f3n en actividades de QA/UAT: preparaci\u00f3n de escenarios, seguimiento de incidencias y validaci\u00f3n de resultados.</li><li>Gesti\u00f3n de cambios: control del alcance, coordinaci\u00f3n con stakeholders y seguimiento de entregables.</li><li>Acompa\u00f1amiento consultivo: formaci\u00f3n a usuarios clave, transferencia de conocimiento y soporte en el arranque.</li><li>Mejora continua: identificaci\u00f3n de oportunidades de optimizaci\u00f3n y propuestas de evoluci\u00f3n para aumentar la eficiencia.</li></ul>",
+        "benefits_headline": "Beneficios",
+        "benefits": "<ul><li><p><strong>100% remoto</strong>.</p></li></ul>",
+        "desirable_headline": "Deseable",
+        "desirable": "<ul><li>Certificaci\u00f3n o formaci\u00f3n adicional en SAP C/4HANA.</li><li>Experiencia en an\u00e1lisis de procesos de ventas, servicio al cliente y/o gesti\u00f3n comercial (seg\u00fan proyectos).</li><li>Conocimiento de metodolog\u00edas de implementaci\u00f3n y gesti\u00f3n de cambios.</li><li>Experiencia trabajando con equipos distribuidos (remotos) y documentaci\u00f3n asincr\u00f3nica.</li></ul>",
+        "remote": true,
+        "remote_modality": "fully_remote",
+        "remote_zone": null,
+        "countries": [
+          "Remote"
+        ],
+        "lang": "lang_not_specified",
+        "category_name": "Programming",
+        "perks": [
+          "remote_full"
+        ],
+        "min_salary": 1500,
+        "max_salary": 2000,
+        "published_at": 1792077489,
+        "response_time_in_days": {
+          "min": null,
+          "max": null
+        },
+        "applications_count": 39,
+        "location_regions": {
+          "data": []
+        },
+        "location_tenants": {
+          "data": []
+        },
+        "location_cities": {
+          "data": []
+        },
+        "modality": {
+          "data": {
+            "id": 1,
+            "type": "modality"
+          }
+        },
+        "seniority": {
+          "data": {
+            "id": 3,
+            "type": "seniority"
+          }
+        },
+        "tags": {
+          "data": [
+            {
+              "id": 988,
+              "type": "tag"
+            },
+            {
+              "id": 1448,
+              "type": "tag"
+            },
+            {
+              "id": 4523,
+              "type": "tag"
+            },
+            {
+              "id": 5039,
+              "type": "tag"
+            },
+            {
+              "id": 7699,
+              "type": "tag"
+            },
+            {
+              "id": 39423,
+              "type": "tag"
+            },
+            {
+              "id": 47905,
+              "type": "tag"
+            }
+          ]
+        },
+        "company": {
+          "data": {
+            "id": 8900,
+            "type": "company"
+          }
+        }
+      },
+      "links": {
+        "public_url": "https://www.getonbrd.com/jobs/consultor-c4c-lisit-remote"
+      }
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "per_page": 2,
+    "total_pages": 1
+  }
+}

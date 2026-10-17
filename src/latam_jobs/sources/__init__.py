@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from latam_jobs.sources.base import JobSource
+from latam_jobs.sources.getonboard import GetOnBoardSource
 from latam_jobs.sources.himalayas import HimalayasSource
 from latam_jobs.sources.remotive import RemotiveSource
 
 SOURCES: dict[str, JobSource] = {
     RemotiveSource.name: RemotiveSource(),
     HimalayasSource.name: HimalayasSource(),
+    GetOnBoardSource.name: GetOnBoardSource(),
 }
