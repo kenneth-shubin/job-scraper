@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from random import Random
 
+from latam_jobs.ats_directory import load_catalog
 from latam_jobs.eligibility import classify_eligibility, resolve_remote_status
 from latam_jobs.filters import match_keywords
 from latam_jobs.http import HttpClient, HttpError
@@ -77,6 +78,14 @@ def collect(
     try:
         if store is not None:
             store.delete_expired_jobs(moment)
+        catalog = ()
+        if any(name in {"greenhouse", "lever", "ashby"} for name, _adapter in selected):
+            catalog = load_catalog(
+                effective,
+                now=moment,
+                client=http,
+                working_path=Path(effective.database.path).parent / "ats-companies.json",
+            )
         for name, adapter in selected:
             if stop is not None and stop.stopped:
                 logger.info("stopping before source %s", name)
@@ -108,6 +117,8 @@ def collect(
                             term.strip() for term in effective.keywords if term.strip()
                         ),
                         remote_only=effective.remote_only,
+                        catalog=catalog,
+                        now=moment,
                     )
                 )
             except Exception as exc:

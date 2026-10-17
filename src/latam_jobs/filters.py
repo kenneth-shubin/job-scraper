@@ -33,6 +33,17 @@ def _first_hit(job: Job, keywords: list[str]) -> tuple[str, str] | None:
     return None
 
 
+def title_matches(title: str, keywords: tuple[str, ...] | list[str]) -> bool:
+    """True when no keywords are configured, or one keyword is a whole word in the title."""
+    cleaned = [item.strip() for item in keywords if item.strip()]
+    if not cleaned:
+        return True
+    for keyword in cleaned:
+        if _pattern(keyword).search(title):
+            return True
+    return False
+
+
 def _search_fields(job: Job, keyword: str) -> list[tuple[str, str]]:
     fields = [("title", job.title), ("tags", " ".join(job.tags))]
     if len(keyword) > 2:

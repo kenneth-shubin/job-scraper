@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Protocol
+from datetime import datetime
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from latam_jobs.ats_directory import CatalogBoard
 
 from latam_jobs.models import Job
 from latam_jobs.settings import SourceSettings
@@ -42,6 +48,9 @@ class FetchContext:
     state: SourceSnapshot = field(default_factory=SourceSnapshot)
     search_terms: tuple[str, ...] = ()
     remote_only: bool = True
+    catalog: tuple[CatalogBoard, ...] = ()
+    now: datetime | None = None
+    sleeper: Callable[[float], None] = time.sleep
 
 
 @dataclass

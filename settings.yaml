@@ -34,6 +34,9 @@ web:
 notifications:
   enabled: false
 
+ats_catalog:
+  update_online: true
+
 sources:
   remotive:
     enabled: true
@@ -85,23 +88,15 @@ sources:
     interval_hours: 24
     url: https://boards-api.greenhouse.io/v1/boards/{board}/jobs
     max_pages: 1
-    feeds:
-      - goodwaygroup
-      - gitlab
-      - cloudflare
-      - discord
-      - figma
-      - intercom
-      - airtable
 
   lever:
-    enabled: false
+    enabled: true
     interval_hours: 24
     url: https://api.lever.co/v0/postings/{site}
     max_pages: 1
 
   ashby:
-    enabled: false
+    enabled: true
     interval_hours: 24
     url: https://api.ashbyhq.com/posting-api/job-board/{board}
     max_pages: 1
