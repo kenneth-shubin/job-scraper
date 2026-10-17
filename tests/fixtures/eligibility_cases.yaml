@@ -1,0 +1,242 @@
+- id: us_timezone_salary_and_headquarters
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Remote
+  description: Overlap with US business hours. Salary is paid in USD. The company is headquartered in the United States.
+  expect_eligibility: maybe
+  expect_reason: "maybe:insufficient:colombia: remote without a geographic eligibility statement"
+
+- id: bare_w2_worldwide
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Worldwide
+  description: This is a W2 role with a USD salary.
+  expect_eligibility: accepted
+  expect_reason: "accepted:worldwide:colombia: worldwide includes the residence country"
+
+- id: w2_us_residents
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Remote
+  description: W2 only for US residents.
+  expect_eligibility: rejected
+  expect_reason: "rejected:non_latam_residency:colombia: explicit residency restriction outside Latin America"
+
+- id: worldwide_except_us
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Worldwide except the United States
+  description: Fully remote.
+  expect_eligibility: accepted
+  expect_reason: "accepted:worldwide:colombia: worldwide includes the residence country"
+
+- id: americas
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Remote - Americas
+  description: Fully remote.
+  expect_eligibility: accepted
+  expect_reason: "accepted:americas:colombia: Americas includes the residence country"
+
+- id: north_america
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: North America
+  description: Remote role.
+  expect_eligibility: maybe
+  expect_reason: "maybe:north_america:colombia: North America does not say whether the residence country is included"
+
+- id: latam_plus_us_only
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: LATAM
+  description: US residents only.
+  expect_eligibility: rejected
+  expect_reason: "rejected:non_latam_residency:colombia: explicit residency restriction outside Latin America"
+
+- id: colombia_only
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Colombia
+  description: Fully remote.
+  expect_eligibility: accepted
+  expect_reason: "accepted:country_allow_list:colombia: allowed countries include colombia"
+
+- id: brazil_only
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Brazil only
+  description: Fully remote.
+  expect_eligibility: rejected
+  expect_reason: "rejected:country_allow_list:colombia: restricted to brazil, which does not include colombia"
+
+- id: chile_only
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Chile only
+  description: Fully remote.
+  expect_eligibility: rejected
+  expect_reason: "rejected:country_allow_list:colombia: restricted to chile, which does not include colombia"
+
+- id: brazil_and_chile
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Brazil and Chile
+  description: Fully remote.
+  expect_eligibility: rejected
+  expect_reason: "rejected:country_allow_list:colombia: restricted to brazil, chile, which does not include colombia"
+
+- id: mexico_and_colombia
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Mexico and Colombia
+  description: Fully remote.
+  expect_eligibility: accepted
+  expect_reason: "accepted:country_allow_list:colombia: allowed countries include colombia"
+
+- id: latam
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Latin America
+  description: Fully remote.
+  expect_eligibility: accepted
+  expect_reason: "accepted:region:colombia: Latin America includes the residence country"
+
+- id: south_america
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: South America
+  description: Fully remote.
+  expect_eligibility: accepted
+  expect_reason: "accepted:region:colombia: South America includes the residence country"
+
+- id: central_america
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Central America
+  description: Fully remote.
+  expect_eligibility: rejected
+  expect_reason: "rejected:region:colombia: Central America does not include the residence country"
+
+- id: mexico_only
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Mexico only
+  description: Fully remote.
+  expect_eligibility: rejected
+  expect_reason: "rejected:country_allow_list:colombia: restricted to mexico, which does not include colombia"
+
+- id: worldwide
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Worldwide
+  description: Fully remote.
+  expect_eligibility: accepted
+  expect_reason: "accepted:worldwide:colombia: worldwide includes the residence country"
+
+- id: brazil_only_for_brazil_resident
+  residence_country: brazil
+  title: Backend Engineer
+  location_text: Brazil only
+  description: Fully remote.
+  expect_eligibility: accepted
+  expect_reason: "accepted:country_allow_list:brazil: allowed countries include brazil"
+
+- id: colombia_only_for_brazil_resident
+  residence_country: brazil
+  title: Backend Engineer
+  location_text: Colombia only
+  description: Fully remote.
+  expect_eligibility: rejected
+  expect_reason: "rejected:country_allow_list:brazil: restricted to colombia, which does not include brazil"
+
+- id: latam_but_brazil_only
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: "LATAM, Brazil only"
+  description: Fully remote.
+  expect_eligibility: rejected
+  expect_reason: "rejected:country_allow_list:colombia: restricted to brazil, which does not include colombia"
+
+- id: onsite_in_latam_city
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Bogota
+  description: On-site role in our Bogota office.
+  remote_status: onsite
+  expect_eligibility: rejected
+  expect_reason: "rejected:remote_only:colombia: on-site and hybrid jobs are excluded"
+
+- id: hybrid
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Worldwide
+  description: Hybrid schedule with two days in the office.
+  expect_eligibility: rejected
+  expect_reason: "rejected:remote_only:colombia: on-site and hybrid jobs are excluded"
+
+- id: remote_only_label
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Remote
+  description: Build backend services.
+  expect_eligibility: maybe
+  expect_reason: "maybe:insufficient:colombia: remote without a geographic eligibility statement"
+
+- id: conflicting_country_lists
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Remote
+  description: Restricted to Brazil. Restricted to Colombia.
+  expect_eligibility: maybe
+  expect_reason: "maybe:conflicting:colombia: conflicting location restrictions"
+
+- id: caribbean
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Caribbean
+  description: Remote role.
+  expect_eligibility: maybe
+  expect_reason: "maybe:caribbean:colombia: Caribbean does not say whether the residence country is included"
+
+- id: structured_brazil
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Remote
+  description: Fully remote.
+  location_countries: [brazil]
+  expect_eligibility: rejected
+  expect_reason: "rejected:country_allow_list:colombia: restricted to brazil, which does not include colombia"
+
+- id: structured_colombia_and_mexico
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Remote
+  description: Fully remote.
+  location_countries: [mexico, colombia]
+  expect_eligibility: accepted
+  expect_reason: "accepted:country_allow_list:colombia: allowed countries include colombia"
+
+- id: canada_only
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Canada only
+  description: Fully remote.
+  expect_eligibility: rejected
+  expect_reason: "rejected:non_latam_residency:colombia: explicit residency restriction outside Latin America"
+
+- id: europe_only
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Europe only
+  description: Fully remote.
+  expect_eligibility: rejected
+  expect_reason: "rejected:non_latam_residency:colombia: explicit residency restriction outside Latin America"
+
+- id: us_customers_do_not_reject
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Worldwide
+  description: You will support US customers during some US time zones.
+  expect_eligibility: accepted
+  expect_reason: "accepted:worldwide:colombia: worldwide includes the residence country"

@@ -5,8 +5,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
+from latam_jobs.eligibility import classify_eligibility, resolve_remote_status
+from latam_jobs.filters import match_keywords
 from latam_jobs.http import HttpClient
-from latam_jobs.models import Job
+from latam_jobs.models import Job, KeywordStatus
 from latam_jobs.settings import ConfigError, Settings, validate_registered_sources
 from latam_jobs.sources import SOURCES
 from latam_jobs.sources.base import FetchContext, JobSource, SourceSnapshot
@@ -58,7 +60,11 @@ def collect(
             runs.append(
                 SourceRun(
                     name=name,
-                    jobs=list(result.jobs),
+                    jobs=[
+                        job
+                        for job in (annotate(item, settings) for item in result.jobs)
+                        if _keep(job)
+                    ],
                     not_modified=result.not_modified,
                     skipped_items=result.skipped_items,
                 )
@@ -69,15 +75,36 @@ def collect(
     return runs
 
 
+def annotate(job: Job, settings: Settings) -> Job:
+    job.remote_status = resolve_remote_status(job)
+    keyword_status, keyword_reason = match_keywords(job, settings)
+    job.keyword_status = keyword_status
+    job.keyword_reason = keyword_reason
+    if keyword_status is not KeywordStatus.MATCHED:
+        return job
+    eligibility, reason = classify_eligibility(job, settings)
+    job.latam_eligibility = eligibility
+    job.eligibility_reason = reason
+    return job
+
+
 def format_job(job: Job) -> str:
     salary = f"\nSalary: {job.salary}" if job.salary else ""
     location = job.location_text or "Location not provided"
+    eligibility = job.latam_eligibility.value if job.latam_eligibility else "unclassified"
     return (
         f"[{job.source}] {job.title}\n"
         f"Company: {job.company}\n"
         f"Location: {location}{salary}\n"
+        f"Eligibility: {eligibility}\n"
+        f"Reason: {job.eligibility_reason}\n"
+        f"Keywords: {job.keyword_reason}\n"
         f"Apply: {job.url}"
     )
+
+
+def _keep(job: Job) -> bool:
+    return job.keyword_status is KeywordStatus.MATCHED
 
 
 def _select_sources(
