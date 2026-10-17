@@ -1,0 +1,21 @@
+[Unit]
+Description=Local LATAM jobs dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=latamjobs
+Group=latamjobs
+WorkingDirectory=/opt/latam-jobs
+Environment=LATAM_JOBS_CONFIG=/etc/latam-jobs/settings.yaml
+EnvironmentFile=/etc/latam-jobs/latam-jobs.env
+ExecStart=/opt/latam-jobs/.venv/bin/latam-jobs serve
+Restart=on-failure
+RestartSec=5
+MemoryMax=256M
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/latam-jobs
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly LATAM job collection
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=120
+Unit=latam-jobs.service
+
+[Install]
+WantedBy=timers.target

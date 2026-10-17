@@ -1,0 +1,19 @@
+[Unit]
+Description=Collect remote jobs open to a Latin American country
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=latamjobs
+Group=latamjobs
+WorkingDirectory=/opt/latam-jobs
+Environment=LATAM_JOBS_CONFIG=/etc/latam-jobs/settings.yaml
+EnvironmentFile=/etc/latam-jobs/latam-jobs.env
+ExecStart=/opt/latam-jobs/.venv/bin/latam-jobs run
+Nice=10
+MemoryMax=256M
+TimeoutStopSec=30
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/latam-jobs

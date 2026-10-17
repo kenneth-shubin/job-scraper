@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily LATAM jobs database backup
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=120
+Unit=latam-jobs-backup.service
+
+[Install]
+WantedBy=timers.target
