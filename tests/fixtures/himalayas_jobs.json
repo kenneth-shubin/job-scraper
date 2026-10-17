@@ -1,0 +1,163 @@
+{
+  "updatedAt": 1792261459,
+  "totalCount": 5000,
+  "jobs": [
+    {
+      "title": "Software Engineer, AI Coding Tasks (Contract)",
+      "excerpt": "We're looking for experienced software engineers to build AI coding tasks from a codebase they know well.",
+      "companyName": "Askable",
+      "companySlug": "askable",
+      "companyLogo": "https://cdn-images.himalayas.app/y4eojs8toyo9ocht137iss4uee48",
+      "employmentType": "Contractor",
+      "minSalary": 100,
+      "maxSalary": 100,
+      "salaryPeriod": "hourly",
+      "seniority": [
+        "Mid-level"
+      ],
+      "currency": "USD",
+      "locationRestrictions": [],
+      "timezoneRestrictions": [
+        -11,
+        -10,
+        -9.5,
+        -9,
+        -8,
+        -7,
+        -6,
+        -5,
+        -4,
+        -3.5,
+        -3,
+        -2,
+        -1,
+        0,
+        1,
+        2,
+        3,
+        3.5,
+        4,
+        4.5,
+        5,
+        5.5,
+        5.75,
+        6,
+        6.5,
+        7,
+        8,
+        8.75,
+        9,
+        9.5,
+        10,
+        10.5,
+        11,
+        12,
+        12.75,
+        13,
+        14
+      ],
+      "categories": [
+        "Freelance-AI-Software-Engineer",
+        "Contract-Software-Engineer",
+        "AI-ML-Software-Engineer",
+        "Contract-Software-Engineering-Jobs",
+        "AI-Coding-Specialist",
+        "Software-Engineer",
+        "Developer"
+      ],
+      "parentCategories": [
+        "Developer"
+      ],
+      "description": "<p>We're looking for experienced software engineers to build AI coding tasks from a codebase they know well. US$1,000 per task, and you can do as many tasks as you want.</p><p>You turn a real change from a repository you know into a task that today's best AI coding models struggle with: hard for the models, but fair for a skilled engineer. Your tasks are used to measure and train AI coding models.</p><p>Remote, any location. US$1,000 per task that passes review. Minimum of one task a week, about",
+      "pubDate": 1792198336,
+      "expiryDate": 1794790336,
+      "applicationLink": "https://himalayas.app/companies/askable/jobs/software-engineer-ai-coding-tasks-contract",
+      "guid": "https://himalayas.app/companies/askable/jobs/software-engineer-ai-coding-tasks-contract"
+    },
+    {
+      "title": "Senior Software Engineer, Exposure Management",
+      "excerpt": "About Beazley Security Beazley Security is a global cybersecurity firm committed to helping clients enable advanced cyber defenses that reduce risk with quantifiable results.",
+      "companyName": "Beazley Security",
+      "companySlug": "beazley-security",
+      "companyLogo": "https://cdn-images.himalayas.app/9mdd72fxl905wwewf5y8f7wbqoq8",
+      "employmentType": "Full Time",
+      "minSalary": null,
+      "maxSalary": null,
+      "salaryPeriod": "annual",
+      "seniority": [
+        "Senior"
+      ],
+      "currency": null,
+      "locationRestrictions": [
+        "United States"
+      ],
+      "timezoneRestrictions": [
+        -10,
+        -9,
+        -8,
+        -7,
+        -6,
+        -5,
+        14
+      ],
+      "categories": [
+        "Software-Engineer",
+        "Backend-Engineer",
+        "Security-Engineer",
+        "Risk-Management-Engineer",
+        "Senior-Risk-Engineer"
+      ],
+      "parentCategories": [
+        "Developer"
+      ],
+      "description": "<div>\n<p><b><strong>About <a href=\"https://himalayas.app/companies/beazley-security\">Beazley Security</a></strong></b></p>\n<p><a href=\"https://himalayas.app/companies/beazley-security\">Beazley Security</a> is a global cybersecurity firm committed to helping clients enable advanced cyber defenses that reduce risk with quantifiable results. We\u2019re comprised of top talent from private industry, government, intelligence, and law enforcement who are specialists in threat detection, incident response, ",
+      "pubDate": 1792261459,
+      "expiryDate": 1797445458,
+      "applicationLink": "https://himalayas.app/companies/beazley-security/jobs/senior-software-engineer-exposure-management",
+      "guid": "https://himalayas.app/companies/beazley-security/jobs/senior-software-engineer-exposure-management"
+    },
+    {
+      "title": "Dev .NET SR - Projeto Internacional",
+      "excerpt": "O que vamos construir juntos? Essa posi\u00e7\u00e3o \u00e9 para trabalhar em um Projeto Internacional.",
+      "companyName": "DB | CRESCER com prop\u00f3sito!",
+      "companySlug": "db-crescer-com-proposito",
+      "companyLogo": "",
+      "employmentType": "Full Time",
+      "minSalary": null,
+      "maxSalary": null,
+      "salaryPeriod": "annual",
+      "seniority": [
+        "Senior"
+      ],
+      "currency": null,
+      "locationRestrictions": [
+        "Brazil"
+      ],
+      "timezoneRestrictions": [
+        -5,
+        -4,
+        -3,
+        -2
+      ],
+      "categories": [
+        ".NET-Developer",
+        "C++-Developer",
+        "Backend-Engineer",
+        "Software-Developer",
+        "Desenvolvedor-C#-.NET",
+        "Desenvolvedor-C#",
+        "Desenvolvedor-.NET",
+        "Programador-.NET",
+        "Programa\u00e7\u00e3o-C#"
+      ],
+      "parentCategories": [
+        "Developer"
+      ],
+      "description": "<h3>O que vamos construir juntos?</h3><p>Essa posi\u00e7\u00e3o \u00e9 para trabalhar em um Projeto Internacional. S\u00e3o equipes globais e est\u00e3o em v\u00e1rios lugares no mundo proporcionando uma boa conex\u00e3o com diversas culturas e perfis. \u00c9 uma boa oportunidade para atuar com a metodologia \u00e1gil, que faz parte do nosso dia a dia! Trabalharemos juntos para construir melhores cen\u00e1rios e desenvolver boas solu\u00e7\u00f5es.</p><p>Nossa equipe de Custom Bid Services est\u00e1 procurando um desenvolvedor experiente para se juntar ao nos",
+      "pubDate": 1792261109,
+      "expiryDate": 1797445108,
+      "applicationLink": "https://himalayas.app/companies/db-crescer-com-proposito/jobs/dev-net-sr-projeto-internacional-2753717889",
+      "guid": "https://himalayas.app/companies/db-crescer-com-proposito/jobs/dev-net-sr-projeto-internacional-2753717889"
+    }
+  ]
+}
