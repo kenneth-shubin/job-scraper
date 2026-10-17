@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <h1>Status</h1>
+  <table>
+    <thead>
+      <tr>
+        <th>Source</th>
+        <th>Last success</th>
+        <th>Next fetch</th>
+        <th>HTTP status</th>
+        <th>Last error</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.name }}</td>
+        {% if row.ran %}
+        <td>{{ row.last_success or "—" }}</td>
+        <td>{{ row.next_fetch or "—" }}</td>
+        <td>{{ row.status if row.status is not none else "—" }}</td>
+        <td>{{ row.error or "—" }}</td>
+        {% else %}
+        <td colspan="4" class="empty">Not fetched yet</td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

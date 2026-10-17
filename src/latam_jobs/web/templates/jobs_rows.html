@@ -1,0 +1,28 @@
+<table>
+  <thead>
+    <tr>
+      <th>Title</th>
+      <th>Company</th>
+      <th>Location</th>
+      <th>Source</th>
+      <th>Eligibility</th>
+      <th>Reason</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for job in jobs %}
+    <tr>
+      <td><a href="{{ job.url }}" rel="noopener noreferrer">{{ job.title }}</a></td>
+      <td>{{ job.company }}</td>
+      <td>{{ job.location_text or "—" }}</td>
+      <td>{{ job.source }}</td>
+      <td><span class="badge {{ job.latam_eligibility }}">{{ job.latam_eligibility }}</span></td>
+      <td>{{ job.eligibility_reason }}</td>
+    </tr>
+    {% else %}
+    <tr>
+      <td colspan="6" class="empty">No matching jobs.</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>

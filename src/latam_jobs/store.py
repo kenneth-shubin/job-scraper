@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from functools import wraps
 from pathlib import Path
 
 from latam_jobs.models import Job, KeywordStatus, LatamEligibility
@@ -48,7 +51,8 @@ class Store:
     def __init__(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
-        self._conn = sqlite3.connect(path)
+        self._conn = sqlite3.connect(path, check_same_thread=False)
+        self._lock = threading.RLock()
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
@@ -155,6 +159,10 @@ class Store:
             """,
             params,
         ).fetchall()
+        return [_stored_job(row) for row in rows]
+
+    def list_all_jobs(self) -> list[StoredJob]:
+        rows = self._conn.execute("SELECT * FROM jobs ORDER BY id").fetchall()
         return [_stored_job(row) for row in rows]
 
     def list_pending_notifications(self, limit: int = 50) -> list[StoredJob]:
@@ -435,6 +443,37 @@ class Store:
         except Exception:
             self._conn.execute("ROLLBACK")
             raise
+
+
+def _serialized(method: Callable) -> Callable:
+    @wraps(method)
+    def wrapped(self: Store, *args: object, **kwargs: object) -> object:
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapped
+
+
+for _name in (
+    "close",
+    "migrate",
+    "load_or_seed",
+    "save_settings",
+    "upsert_jobs",
+    "count_jobs",
+    "get_job",
+    "list_jobs",
+    "list_all_jobs",
+    "list_pending_notifications",
+    "mark_notified",
+    "mark_notification_failed",
+    "update_classification",
+    "get_schedule",
+    "list_schedules",
+    "record_success",
+    "record_failure",
+):
+    setattr(Store, _name, _serialized(getattr(Store, _name)))
 
 
 def should_store(job: Job, settings: Settings) -> bool:

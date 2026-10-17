@@ -5,10 +5,14 @@ description = "Collect remote software jobs open to a configured Latin American 
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.143.3",
     "feedparser>=6.0.14",
     "httpx>=0.27",
+    "jinja2>=3.1.6",
     "pydantic>=2.0",
+    "python-multipart>=0.0.32",
     "pyyaml>=6.0",
+    "uvicorn>=0.54.0",
 ]
 
 [project.scripts]
@@ -20,6 +24,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/latam_jobs"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/latam_jobs/migrations" = "latam_jobs/migrations"
+"src/latam_jobs/web/templates" = "latam_jobs/web/templates"
+"src/latam_jobs/web/static" = "latam_jobs/web/static"
 
 [dependency-groups]
 dev = [

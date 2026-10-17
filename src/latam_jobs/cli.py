@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -84,6 +85,24 @@ def _cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_serve(args: argparse.Namespace) -> int:
+    secret = os.environ.get("WEB_SECRET", "").strip()
+    if not secret:
+        print("WEB_SECRET is required to serve the dashboard.", file=sys.stderr)
+        return 2
+    import uvicorn
+
+    from latam_jobs.sources import SOURCES
+    from latam_jobs.web.app import create_app
+
+    bootstrap = load_settings(args.config)
+    store = Store(Path(bootstrap.database.path))
+    store.migrate()
+    app = create_app(bootstrap=bootstrap, store=store, registry=SOURCES, secret=secret)
+    uvicorn.run(app, host=bootstrap.web.host, port=bootstrap.web.port)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument(
@@ -113,6 +132,8 @@ def build_parser() -> argparse.ArgumentParser:
     listing.add_argument("--eligibility", choices=("accepted", "rejected", "maybe"))
     listing.add_argument("--limit", type=int, default=50)
     listing.set_defaults(func=_cmd_list)
+    serve = subparsers.add_parser("serve", parents=[common], help="Serve the local dashboard.")
+    serve.set_defaults(func=_cmd_serve)
     return parser
 
 
