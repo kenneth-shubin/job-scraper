@@ -10,6 +10,9 @@
   {% endif %}
   <form method="post" action="/settings">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Display timezone
+      <input type="text" name="display_timezone" value="{{ settings.display_timezone }}">
+    </label>
     <label>Residence country
       <select name="residence_country">
         {% for country in countries %}

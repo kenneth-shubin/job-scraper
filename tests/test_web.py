@@ -1,13 +1,13 @@
 import argparse
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from latam_jobs.cli import _cmd_serve
-from latam_jobs.models import Job, KeywordStatus, LatamEligibility, RemoteStatus
-from latam_jobs.settings import DatabaseSettings, Settings
+from latam_jobs.models import ApplyUrlType, Job, KeywordStatus, LatamEligibility, RemoteStatus
+from latam_jobs.settings import DatabaseSettings, Settings, SourceSettings
 from latam_jobs.sources import SOURCES
 from latam_jobs.sources.remotive import RemotiveSource
 from latam_jobs.store import Store
@@ -47,6 +47,7 @@ def _job(
         eligibility_reason="stored before the latest settings",
         keyword_status=KeywordStatus.MATCHED,
         keyword_reason="matched 'backend' in title",
+        published_at=NOW,
     )
 
 
@@ -68,8 +69,22 @@ def _open(
         store=store,
         registry=registry or SOURCES,
         secret="test-secret",
+        password="test-password",
     )
-    return TestClient(app), store, bootstrap
+    client = TestClient(app)
+    _unlock(client)
+    return client, store, bootstrap
+
+
+def _unlock(client: TestClient, password: str = "test-password") -> None:
+    page = client.get("/login")
+    match = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
+    assert match is not None
+    client.post(
+        "/login",
+        data={"csrf_token": match.group(1), "password": password},
+        follow_redirects=True,
+    )
 
 
 def _csrf(client: TestClient) -> str:
@@ -183,7 +198,8 @@ def test_registry_source_appears_without_a_template_change(tmp_path: Path) -> No
     assert "example" in settings.text
     assert "remotive" in settings.text
     assert "example" in status.text
-    assert "Not fetched yet" in status.text
+    assert "Never" in status.text
+    assert "Disabled" in status.text
     store.close()
 
 
@@ -202,3 +218,126 @@ def test_settings_post_without_csrf_does_not_write(tmp_path: Path) -> None:
 def test_serve_requires_web_secret(monkeypatch: object) -> None:
     monkeypatch.delenv("WEB_SECRET", raising=False)  # type: ignore[attr-defined]
     assert _cmd_serve(argparse.Namespace(config=Path("settings.yaml"))) == 2
+
+
+def test_jobs_page_shows_apply_links_and_run_status(tmp_path: Path) -> None:
+    database = tmp_path / "jobs.sqlite"
+    bootstrap = Settings(
+        database=DatabaseSettings(path=str(database)),
+        residence_country="colombia",
+        keywords=["backend"],
+        sources={"remotive": SourceSettings(enabled=True, interval_hours=12)},
+    )
+    store = Store(database)
+    store.migrate()
+    store.load_or_seed(bootstrap)
+    registry = {"remotive": RemotiveSource(), "example": ExampleSource()}
+    client = TestClient(
+        create_app(
+            bootstrap=bootstrap,
+            store=store,
+            registry=registry,
+            secret="test-secret",
+            password="test-password",
+        )
+    )
+    _unlock(client)
+    direct = _job(title="Direct backend", url="https://remotive.com/jobs/direct")
+    direct.apply_url = "https://boards.greenhouse.io/acme/jobs/1"
+    direct.apply_url_type = ApplyUrlType.DIRECT
+    board = _job(
+        source_job_id="board",
+        title="Board backend",
+        url="https://remotive.com/jobs/board",
+    )
+    store.upsert_jobs([direct, board], NOW)
+
+    quiet = client.get("/")
+    assert quiet.status_code == 200
+    assert "Job Scraper Status" in quiet.text
+    assert 'hx-trigger="every 60s"' in quiet.text
+    assert "New jobs found: 0" in quiet.text
+    assert "Scraper status: Never" in quiet.text
+    assert "Apply Directly" in quiet.text
+    assert "Apply on Job Board" in quiet.text
+    assert "View Original Job" in quiet.text
+    assert 'target="_blank"' in quiet.text
+    assert 'rel="noopener noreferrer"' in quiet.text
+    assert "https://boards.greenhouse.io/acme/jobs/1" in quiet.text
+
+    only_direct = client.get("/?application=direct")
+    assert "Direct backend" in only_direct.text
+    assert "Board backend" not in only_direct.text
+    only_board = client.get("/jobs/rows?application=job_board")
+    assert "Board backend" in only_board.text
+    assert "Direct backend" not in only_board.text
+
+    store.record_success(
+        "remotive",
+        now=NOW,
+        next_fetch_at=NOW + timedelta(hours=2),
+        etag=None,
+        last_modified=None,
+        status_code=200,
+    )
+    store.record_success(
+        "example",
+        now=NOW,
+        next_fetch_at=NOW + timedelta(hours=1),
+        etag=None,
+        last_modified=None,
+        status_code=200,
+    )
+    store.record_run(
+        started_at=NOW,
+        finished_at=NOW,
+        outcome="success",
+        new_jobs=2,
+        sources_ok=1,
+        sources_failed=0,
+    )
+    status = client.get("/status/summary")
+    assert "New jobs found: 2" in status.text
+    assert "Scraper status: Success" in status.text
+    assert "Oct 17, 2026, 10:00 AM" in status.text
+    assert "Oct 17, 2026, 12:00 PM" in status.text
+    example = re.search(r"<td>example</td>(.*?)</tr>", status.text, re.S)
+    assert example is not None
+    assert "<td>Disabled</td>" in example.group(1)
+    remotive = re.search(r"<td>remotive</td>(.*?)</tr>", status.text, re.S)
+    assert remotive is not None
+    assert "<td>Success</td>" in remotive.group(1)
+
+    store.record_failure(
+        "remotive",
+        now=NOW + timedelta(hours=3),
+        backoff_until=NOW + timedelta(days=1),
+        status_code=500,
+        error="HTTP 500",
+        previous=store.get_schedule("remotive"),
+    )
+    store.record_run(
+        started_at=NOW + timedelta(hours=3),
+        finished_at=NOW + timedelta(hours=3),
+        outcome="failed",
+        new_jobs=0,
+        sources_ok=0,
+        sources_failed=1,
+    )
+    failed = client.get("/")
+    failed_row = re.search(r"<td>remotive</td>(.*?)</tr>", failed.text, re.S)
+    assert failed_row is not None
+    assert "<td>Failed</td>" in failed_row.group(1)
+    assert "Scraper status: Failed" in failed.text
+    assert "Last successful collection:" in failed.text
+    assert "Oct 17, 2026, 10:00 AM" in failed.text
+    store.close()
+
+
+def test_unknown_display_timezone_is_rejected(tmp_path: Path) -> None:
+    client, store, bootstrap = _open(tmp_path)
+    response = _save(client, display_timezone="Mars/Base")
+    assert response.status_code == 400
+    assert "Unknown timezone" in response.text
+    assert store.load_or_seed(bootstrap).display_timezone == "America/Bogota"
+    store.close()

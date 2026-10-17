@@ -3,6 +3,8 @@
 Verified page: https://weworkremotely.com/remote-job-rss-feed
 The site allows the public RSS feed when links attribute We Work Remotely.
 This adapter reads the programming and DevOps feeds. It does not scrape HTML pages.
+The RSS item link is the We Work Remotely listing. Descriptions are not scanned
+for application links.
 """
 
 from __future__ import annotations

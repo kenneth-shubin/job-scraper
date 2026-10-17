@@ -5,6 +5,7 @@ Official help documents the feed, and a request with the honest latam-jobs
 User-Agent returned HTTP 200. The first array element is a legal notice.
 Messages must name Remote OK and link to the posting. The source stays disabled
 in settings until it is turned on. This adapter does not impersonate a browser.
+`apply_url` is stored as a direct link only when its host differs from `url`.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from datetime import UTC, datetime
 from latam_jobs.models import Job
 from latam_jobs.sources.base import FetchContext, FetchResult, SourceError
 from latam_jobs.text import html_to_text
+from latam_jobs.urls import classify_apply_link
 
 logger = logging.getLogger(__name__)
 
@@ -80,11 +82,14 @@ def _parse_job(item: object) -> Job | None:
         return None
     source_id = item.get("id")
     title = item.get("position")
-    url = item.get("url") or item.get("apply_url")
+    listing = item.get("url") if isinstance(item.get("url"), str) else ""
+    candidate = item.get("apply_url") if isinstance(item.get("apply_url"), str) else None
+    url = listing.strip() or (candidate.strip() if isinstance(candidate, str) else "")
     if source_id in (None, "") or not isinstance(title, str) or not title.strip():
         return None
-    if not isinstance(url, str) or not url.strip():
+    if not url:
         return None
+    apply_url, apply_url_type = classify_apply_link(url, candidate)
     company = item.get("company")
     description = item.get("description")
     location = item.get("location")
@@ -94,7 +99,9 @@ def _parse_job(item: object) -> Job | None:
         source_job_id=str(source_id),
         title=title.strip(),
         company=company.strip() if isinstance(company, str) and company.strip() else "Unknown",
-        url=url.strip(),
+        url=url,
+        apply_url=apply_url,
+        apply_url_type=apply_url_type,
         description=html_to_text(description) if isinstance(description, str) else "",
         tags=tuple(tag.strip() for tag in tags if isinstance(tag, str) and tag.strip())
         if isinstance(tags, list)

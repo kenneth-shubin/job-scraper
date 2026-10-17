@@ -7,7 +7,7 @@ import sqlite3
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 from pathlib import Path
 
@@ -45,6 +45,19 @@ class StoredJob:
     notification_attempts: int
     notified_at: str | None
     content_hash: str
+    apply_url: str | None = None
+    apply_url_type: str = "job_board"
+
+
+@dataclass
+class CollectorRun:
+    id: int
+    started_at: datetime
+    finished_at: datetime
+    outcome: str
+    new_jobs: int
+    sources_ok: int
+    sources_failed: int
 
 
 class Store:
@@ -108,15 +121,18 @@ class Store:
             self._conn.execute("ROLLBACK")
             raise
 
-    def upsert_jobs(self, jobs: list[Job], now: datetime) -> None:
+    def upsert_jobs(self, jobs: list[Job], now: datetime) -> int:
+        inserted = 0
         self._conn.execute("BEGIN")
         try:
             for job in jobs:
-                self._upsert_one(job, now)
+                if self._upsert_one(job, now):
+                    inserted += 1
             self._conn.execute("COMMIT")
         except Exception:
             self._conn.execute("ROLLBACK")
             raise
+        return inserted
 
     def count_jobs(self) -> int:
         row = self._conn.execute("SELECT COUNT(*) AS count FROM jobs").fetchone()
@@ -135,10 +151,14 @@ class Store:
         eligibility: str | None = None,
         source: str | None = None,
         query: str | None = None,
+        application: str | None = None,
         limit: int = 100,
     ) -> list[StoredJob]:
         clauses = ["keyword_status = 'matched'"]
         params: list[object] = []
+        if application in {"direct", "job_board"}:
+            clauses.append("apply_url_type = ?")
+            params.append(application)
         if eligibility:
             clauses.append("latam_eligibility = ?")
             params.append(eligibility)
@@ -154,7 +174,7 @@ class Store:
             f"""
             SELECT * FROM jobs
             WHERE {" AND ".join(clauses)}
-            ORDER BY discovered_at DESC, id DESC
+            ORDER BY published_at IS NULL, published_at DESC, discovered_at DESC, id DESC
             LIMIT ?
             """,
             params,
@@ -354,7 +374,75 @@ class Store:
         )
         self._conn.commit()
 
-    def _upsert_one(self, job: Job, now: datetime) -> None:
+    def record_run(
+        self,
+        *,
+        started_at: datetime,
+        finished_at: datetime,
+        outcome: str,
+        new_jobs: int,
+        sources_ok: int,
+        sources_failed: int,
+    ) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO collector_runs (
+                started_at, finished_at, outcome, new_jobs, sources_ok, sources_failed
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                to_iso(started_at),
+                to_iso(finished_at),
+                outcome,
+                new_jobs,
+                sources_ok,
+                sources_failed,
+            ),
+        )
+        self._conn.commit()
+
+    def latest_run(self) -> CollectorRun | None:
+        row = self._conn.execute("SELECT * FROM collector_runs ORDER BY id DESC LIMIT 1").fetchone()
+        return _collector_run(row) if row is not None else None
+
+    def latest_successful_run(self) -> CollectorRun | None:
+        row = self._conn.execute(
+            """
+            SELECT * FROM collector_runs
+            WHERE outcome = 'success'
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        return _collector_run(row) if row is not None else None
+
+    def record_login_attempt(self, now: datetime, *, succeeded: bool) -> None:
+        self._prune_login_attempts(now)
+        self._conn.execute(
+            "INSERT INTO login_attempts (attempted_at, succeeded) VALUES (?, ?)",
+            (to_iso(now), 1 if succeeded else 0),
+        )
+        self._conn.commit()
+
+    def recent_login_failures(self, now: datetime) -> list[datetime]:
+        self._prune_login_attempts(now)
+        window = to_iso(now - timedelta(minutes=15))
+        rows = self._conn.execute(
+            """
+            SELECT attempted_at FROM login_attempts
+            WHERE succeeded = 0 AND attempted_at >= ?
+            ORDER BY attempted_at
+            """,
+            (window,),
+        ).fetchall()
+        return [moment for row in rows if (moment := from_iso(row["attempted_at"]))]
+
+    def _prune_login_attempts(self, now: datetime) -> None:
+        cutoff = to_iso(now - timedelta(days=1))
+        self._conn.execute("DELETE FROM login_attempts WHERE attempted_at < ?", (cutoff,))
+        self._conn.commit()
+
+    def _upsert_one(self, job: Job, now: datetime) -> bool:
         if job.latam_eligibility is None or job.keyword_status is None:
             raise ValueError(f"Job {job.source}:{job.source_job_id} is not classified")
         canonical = canonical_url(job.url)
@@ -372,6 +460,8 @@ class Store:
             job.title,
             job.company,
             job.url,
+            job.apply_url,
+            job.apply_url_type.value,
             canonical,
             job.description,
             json.dumps(list(job.tags)),
@@ -388,30 +478,34 @@ class Store:
             digest,
         )
         if existing is None:
+            if not _within_recent_window(job.published_at, now):
+                return False
             self._conn.execute(
                 """
                 INSERT INTO jobs (
-                    source, source_job_id, title, company, url, canonical_url, description,
-                    tags_json, location_text, location_countries_json, salary, published_at,
-                    remote_status, latam_eligibility, eligibility_reason, keyword_status,
-                    keyword_reason, notification_status, content_hash, discovered_at, last_seen_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    source, source_job_id, title, company, url, apply_url, apply_url_type,
+                    canonical_url, description, tags_json, location_text, location_countries_json,
+                    salary, published_at, remote_status, latam_eligibility, eligibility_reason,
+                    keyword_status, keyword_reason, notification_status, content_hash,
+                    discovered_at, last_seen_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (job.source, job.source_job_id, *shared, moment, moment),
             )
-            return
+            return True
         self._conn.execute(
             """
             UPDATE jobs SET
-                title = ?, company = ?, url = ?, canonical_url = ?, description = ?,
-                tags_json = ?, location_text = ?, location_countries_json = ?, salary = ?,
-                published_at = ?, remote_status = ?, latam_eligibility = ?,
-                eligibility_reason = ?, keyword_status = ?, keyword_reason = ?,
-                notification_status = ?, content_hash = ?, last_seen_at = ?
+                title = ?, company = ?, url = ?, apply_url = ?, apply_url_type = ?,
+                canonical_url = ?, description = ?, tags_json = ?, location_text = ?,
+                location_countries_json = ?, salary = ?, published_at = ?, remote_status = ?,
+                latam_eligibility = ?, eligibility_reason = ?, keyword_status = ?,
+                keyword_reason = ?, notification_status = ?, content_hash = ?, last_seen_at = ?
             WHERE source = ? AND source_job_id = ?
             """,
             (*shared, moment, job.source, job.source_job_id),
         )
+        return False
 
     def _canonical_exists(self, canonical: str, source: str, source_job_id: str) -> bool:
         row = self._conn.execute(
@@ -472,6 +566,11 @@ for _name in (
     "list_schedules",
     "record_success",
     "record_failure",
+    "record_run",
+    "latest_run",
+    "latest_successful_run",
+    "record_login_attempt",
+    "recent_login_failures",
 ):
     setattr(Store, _name, _serialized(getattr(Store, _name)))
 
@@ -533,7 +632,31 @@ def _stored_job(row: sqlite3.Row) -> StoredJob:
         notification_attempts=int(row["notification_attempts"]),
         notified_at=row["notified_at"],
         content_hash=row["content_hash"],
+        apply_url=row["apply_url"],
+        apply_url_type=row["apply_url_type"],
     )
+
+
+def _collector_run(row: sqlite3.Row) -> CollectorRun:
+    started = from_iso(row["started_at"])
+    finished = from_iso(row["finished_at"])
+    if started is None or finished is None:
+        raise ValueError("collector run is missing a timestamp")
+    return CollectorRun(
+        id=int(row["id"]),
+        started_at=started,
+        finished_at=finished,
+        outcome=row["outcome"],
+        new_jobs=int(row["new_jobs"]),
+        sources_ok=int(row["sources_ok"]),
+        sources_failed=int(row["sources_failed"]),
+    )
+
+
+def _within_recent_window(published: datetime | None, now: datetime) -> bool:
+    if published is None or published.tzinfo is None:
+        return False
+    return published >= now - timedelta(hours=24)
 
 
 def _sql_statements(script: str) -> list[str]:

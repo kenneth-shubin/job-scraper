@@ -7,13 +7,15 @@ Personal collector for remote software jobs that a resident of one Latin America
 ```bash
 uv sync
 cp .env.example .env
-# Put a long random value in WEB_SECRET before starting the dashboard.
+# Put long random values in WEB_SECRET and DASHBOARD_PASSWORD before starting the dashboard.
 uv run latam-jobs check
 uv run latam-jobs run --dry-run
 uv run latam-jobs serve
 ```
 
-Open `http://127.0.0.1:8080`. The jobs page works with notifications disabled.
+Open `http://127.0.0.1:8080` and enter `DASHBOARD_PASSWORD`. The jobs page works with notifications disabled. `latam-jobs run` does not need the password.
+
+A new job is stored only when its publication time is within the last 24 hours. Jobs already in the database stay listed and are still refreshed. The jobs page sorts by publication time. Listings with a separate company or ATS URL show Apply Directly; every row still links to the original posting. The status block above the filters shows the last collector run and each source. Times use the display timezone from the settings page, which defaults to `America/Bogota`.
 
 ## Telegram
 
@@ -73,7 +75,9 @@ sudo cp .env.example /etc/latam-jobs/latam-jobs.env
 sudo chmod 0600 /etc/latam-jobs/latam-jobs.env
 ```
 
-Set `WEB_SECRET` to a long random string. `HIMALAYAS_API_KEY` is optional. Telegram variables can stay empty until you want alerts.
+Set both `WEB_SECRET` and `DASHBOARD_PASSWORD` to long random values. The web service refuses to start until both are present. Neither value is written to SQLite or the logs. `HIMALAYAS_API_KEY` is optional. Telegram variables can stay empty until you want alerts.
+
+The dashboard listens on `127.0.0.1:8080`. The password protects that local page. It does not protect SSH. A future public bind needs HTTPS; the session cookie is marked Secure only on HTTPS, so the SSH tunnel can stay on HTTP.
 
 `LATAM_JOBS_CONFIG` selects the bootstrap file. The units set it to `/etc/latam-jobs/settings.yaml`. Without that variable, the program uses `/etc/latam-jobs/settings.yaml` when that file exists, and `./settings.yaml` otherwise.
 
@@ -106,7 +110,7 @@ From your laptop:
 ssh -L 8080:127.0.0.1:8080 user@your-vps
 ```
 
-Then open `http://127.0.0.1:8080`. Do not publish port 8080.
+Then open `http://127.0.0.1:8080`. Keep port 8080 on localhost. The dashboard password does not protect SSH, and a future public bind needs HTTPS.
 
 ## Checks
 

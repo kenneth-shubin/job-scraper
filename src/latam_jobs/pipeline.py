@@ -70,6 +70,7 @@ def collect(
         max_retries=effective.http.max_retries,
     )
     runs: list[SourceRun] = []
+    inserted = 0
     try:
         for name, adapter in selected:
             if stop is not None and stop.stopped:
@@ -99,7 +100,9 @@ def collect(
             jobs = [annotate(item, effective) for item in result.jobs]
             visible = [job for job in jobs if _keep(job)]
             if store is not None:
-                store.upsert_jobs([job for job in visible if should_store(job, effective)], moment)
+                inserted += store.upsert_jobs(
+                    [job for job in visible if should_store(job, effective)], moment
+                )
                 store.record_success(
                     name,
                     now=moment,
@@ -126,6 +129,22 @@ def collect(
                 deliver_notifications(store, effective, now=moment)
             except Exception:
                 logger.exception("notification delivery failed")
+            failed = sum(1 for run in runs if run.error)
+            succeeded = len(runs) - failed
+            if failed and succeeded:
+                outcome = "partial"
+            elif failed:
+                outcome = "failed"
+            else:
+                outcome = "success"
+            store.record_run(
+                started_at=moment,
+                finished_at=utc_now(),
+                outcome=outcome,
+                new_jobs=inserted,
+                sources_ok=succeeded,
+                sources_failed=failed,
+            )
     finally:
         if owns_client:
             http.close()
@@ -158,7 +177,7 @@ def format_job(job: Job) -> str:
         f"Eligibility: {eligibility}\n"
         f"Reason: {job.eligibility_reason}\n"
         f"Keywords: {job.keyword_reason}\n"
-        f"Apply: {job.url}"
+        f"Apply: {job.apply_url or job.url}"
     )
 
 

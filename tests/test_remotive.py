@@ -126,3 +126,26 @@ def test_one_failing_source_does_not_stop_remotive() -> None:
     assert by_name["boom"].error is not None
     assert by_name["remotive"].jobs
     assert all(isinstance(job, Job) for job in by_name["remotive"].jobs)
+
+
+def test_invalid_publication_date_stays_unparsed() -> None:
+    payload = {
+        "jobs": [
+            {
+                "id": 1,
+                "title": "Backend",
+                "url": "https://remotive.com/remote-jobs/1",
+                "company_name": "Example",
+                "description": "Python",
+                "candidate_required_location": "Worldwide",
+                "publication_date": "not-a-date",
+            }
+        ]
+    }
+    result = RemotiveSource().fetch(
+        FetchContext(
+            client=_client(payload),
+            settings=SourceSettings(enabled=True, url="https://remotive.com/api/remote-jobs"),
+        )
+    )
+    assert result.jobs[0].published_at is None

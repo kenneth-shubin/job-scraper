@@ -1,0 +1,33 @@
+<section id="scraper-status" class="status-bar"
+         hx-get="/status/summary"
+         hx-trigger="every 60s"
+         hx-swap="outerHTML">
+  <h2>Job Scraper Status</h2>
+  <ul class="status-facts">
+    <li>Last checked: {{ last_checked }}</li>
+    <li>Next scheduled check: {{ next_check }}</li>
+    <li>Last successful collection: {{ last_success }}</li>
+    <li>New jobs found: {{ new_jobs }}</li>
+    <li>Scraper status: {{ outcome }}</li>
+  </ul>
+  <table>
+    <thead>
+      <tr>
+        <th>Source</th>
+        <th>Last checked</th>
+        <th>Next check</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in source_rows %}
+      <tr>
+        <td>{{ row.name }}</td>
+        <td>{{ row.last_checked }}</td>
+        <td>{{ row.next_check }}</td>
+        <td>{{ row.status }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>

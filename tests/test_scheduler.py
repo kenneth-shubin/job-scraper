@@ -3,6 +3,7 @@ from random import Random
 
 from latam_jobs.scheduler import (
     SourceSchedule,
+    earliest_next_fetch,
     failure_backoff,
     is_due,
     next_success_at,
@@ -43,3 +44,14 @@ def test_backoff_doubles_and_caps_at_one_week() -> None:
     assert second_forbidden - NOW == timedelta(hours=48)
     assert capped - NOW == timedelta(days=7)
     assert other - NOW == timedelta(hours=1)
+
+
+def test_next_check_uses_the_earliest_enabled_source() -> None:
+    disabled = SourceSchedule(source_name="remoteok", next_fetch_at=NOW)
+    soon = SourceSchedule(source_name="remotive", next_fetch_at=NOW + timedelta(hours=1))
+    later = SourceSchedule(source_name="himalayas", next_fetch_at=NOW + timedelta(hours=5))
+    assert (
+        earliest_next_fetch([disabled, later, soon], {"remotive", "himalayas"})
+        == soon.next_fetch_at
+    )
+    assert earliest_next_fetch([disabled], {"remotive"}) is None

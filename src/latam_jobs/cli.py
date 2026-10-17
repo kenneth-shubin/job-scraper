@@ -87,8 +87,12 @@ def _cmd_list(args: argparse.Namespace) -> int:
 
 def _cmd_serve(args: argparse.Namespace) -> int:
     secret = os.environ.get("WEB_SECRET", "").strip()
+    password = os.environ.get("DASHBOARD_PASSWORD", "")
     if not secret:
         print("WEB_SECRET is required to serve the dashboard.", file=sys.stderr)
+        return 2
+    if not password:
+        print("DASHBOARD_PASSWORD is required to serve the dashboard.", file=sys.stderr)
         return 2
     import uvicorn
 
@@ -98,7 +102,13 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     bootstrap = load_settings(args.config)
     store = Store(Path(bootstrap.database.path))
     store.migrate()
-    app = create_app(bootstrap=bootstrap, store=store, registry=SOURCES, secret=secret)
+    app = create_app(
+        bootstrap=bootstrap,
+        store=store,
+        registry=SOURCES,
+        secret=secret,
+        password=password,
+    )
     uvicorn.run(app, host=bootstrap.web.host, port=bootstrap.web.port)
     return 0
 

@@ -62,7 +62,7 @@ h1, h2 {
 
 .filters {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.8rem;
   align-items: end;
   margin-bottom: 1rem;
@@ -110,6 +110,23 @@ a { color: var(--accent); }
 .badge.accepted { background: #d9f3e8; }
 .badge.rejected { background: #f8e1d6; }
 .badge.maybe { background: #f8efc8; }
+
+.actions { display: flex; flex-direction: column; gap: 0.2rem; white-space: nowrap; }
+
+.status-bar { margin-bottom: 1.2rem; }
+
+.status-facts { margin: 0 0 0.8rem; padding-left: 1.1rem; }
+
+.logout { margin: 0; }
+
+.logout button {
+  background: transparent;
+  color: #f7f4ef;
+  border-color: transparent;
+  padding: 0;
+}
+
+.login { max-width: 28rem; margin: 4rem auto; }
 
 .empty, .notice, .errors { color: var(--muted); }
 

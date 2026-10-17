@@ -5,6 +5,7 @@ GET https://www.getonbrd.com/api/v0/categories/programming/jobs
 The public API needs no key. No published rate limit was found, so this adapter
 requests at most max_pages with per_page=100. Search also exists, but it requires
 a query or remote filter; the programming category is the bounded feed used here.
+The category payload exposes links.public_url and no separate company or ATS URL.
 """
 
 from __future__ import annotations

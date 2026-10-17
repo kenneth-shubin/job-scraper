@@ -45,6 +45,39 @@ def test_himalayas_maps_locations_and_skips_bad_items() -> None:
     assert "<" not in result.jobs[0].description
 
 
+def test_himalayas_keeps_its_page_cap_and_does_not_send_a_date_filter() -> None:
+    seen: list[httpx.URL] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url)
+        page = request.url.params["page"]
+        return httpx.Response(
+            200,
+            json={
+                "jobs": [
+                    {
+                        "title": f"Role {page}",
+                        "applicationLink": f"https://himalayas.app/jobs/{page}",
+                        "guid": page,
+                        "companyName": "Example",
+                        "description": "Backend",
+                        "pubDate": 1760700000,
+                    }
+                ]
+            },
+        )
+
+    client = HttpClient(
+        timeout=5, max_retries=0, transport=httpx.MockTransport(handler), sleeper=lambda _s: None
+    )
+    settings = SourceSettings(enabled=True, max_pages=2, url="https://himalayas.app/jobs/api")
+    result = HimalayasSource().fetch(FetchContext(client=client, settings=settings))
+    assert [job.source_job_id for job in result.jobs] == ["1", "2"]
+    assert [url.params["page"] for url in seen] == ["1", "2"]
+    assert {url.params["sort"] for url in seen} == {"recent"}
+    assert all("published" not in str(url) for url in seen)
+
+
 def test_himalayas_empty_and_malformed() -> None:
     empty = HimalayasSource().fetch(_context(_client({"jobs": []})))
     assert empty.jobs == []
@@ -127,6 +160,48 @@ def test_remoteok_skips_legal_notice_and_keeps_location() -> None:
     assert "United States" in locations
     assert all(job.source == "remoteok" for job in result.jobs)
     assert result.skipped_items == 0
+
+
+def test_remoteok_direct_link_requires_a_different_host() -> None:
+    same = RemoteOkSource().fetch(
+        _context(
+            _client(
+                [
+                    {
+                        "id": 1,
+                        "position": "Backend",
+                        "company": "Example",
+                        "url": "https://remoteok.com/remote-jobs/1",
+                        "apply_url": "https://www.remoteok.com/remote-jobs/1",
+                        "description": "Python",
+                        "date": "2026-10-17T15:00:00Z",
+                    }
+                ]
+            )
+        )
+    )
+    assert same.jobs[0].apply_url is None
+    assert same.jobs[0].apply_url_type.value == "job_board"
+
+    direct = RemoteOkSource().fetch(
+        _context(
+            _client(
+                [
+                    {
+                        "id": 2,
+                        "position": "Backend",
+                        "company": "Example",
+                        "url": "https://remoteok.com/remote-jobs/2",
+                        "apply_url": "https://boards.greenhouse.io/acme/jobs/2",
+                        "description": "Python",
+                        "date": "2026-10-17T15:00:00Z",
+                    }
+                ]
+            )
+        )
+    )
+    assert direct.jobs[0].apply_url == "https://boards.greenhouse.io/acme/jobs/2"
+    assert direct.jobs[0].apply_url_type.value == "direct"
 
 
 def test_remoteok_empty_and_malformed() -> None:

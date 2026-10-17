@@ -3,8 +3,10 @@
 Verified endpoint: GET https://remotive.com/api/remote-jobs
 Documentation: https://github.com/remotive-com/remote-jobs-api
 Access: no API key. Remotive asks for at most four requests per day and blocks
-more than two per minute. Jobs are delayed by 24 hours. Messages that display
-these jobs must name Remotive and use the Remotive URL.
+more than two per minute. Jobs are delayed by 24 hours, so a fresh run can
+legitimately store nothing under the 24-hour publication window. The verified
+payload has no separate application URL; `url` is the Remotive listing.
+Messages that display these jobs must name Remotive and use the Remotive URL.
 """
 
 from __future__ import annotations

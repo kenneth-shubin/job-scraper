@@ -31,6 +31,15 @@ class SourceSchedule:
     last_error: str | None = None
 
 
+def earliest_next_fetch(schedules: list[SourceSchedule], enabled: set[str]) -> datetime | None:
+    moments = [
+        item.next_fetch_at
+        for item in schedules
+        if item.source_name in enabled and item.next_fetch_at is not None
+    ]
+    return min(moments) if moments else None
+
+
 def is_due(schedule: SourceSchedule | None, now: datetime) -> bool:
     if schedule is None:
         return True

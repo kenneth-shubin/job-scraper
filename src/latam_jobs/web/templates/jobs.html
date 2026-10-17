@@ -2,6 +2,7 @@
 {% block content %}
 <section class="panel">
   <h1>Jobs</h1>
+  {% include "status_summary.html" %}
   <form class="filters" method="get" action="/"
         hx-get="/jobs/rows"
         hx-target="#job-table"
@@ -20,6 +21,13 @@
         {% for name in sources %}
         <option value="{{ name }}" {% if source == name %}selected{% endif %}>{{ name }}</option>
         {% endfor %}
+      </select>
+    </label>
+    <label>Application
+      <select name="application">
+        <option value="all" {% if application == "all" %}selected{% endif %}>All jobs</option>
+        <option value="direct" {% if application == "direct" %}selected{% endif %}>Direct application available</option>
+        <option value="job_board" {% if application == "job_board" %}selected{% endif %}>Job board only</option>
       </select>
     </label>
     <label>Search

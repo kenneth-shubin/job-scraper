@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from random import Random
@@ -5,7 +6,7 @@ from random import Random
 import httpx
 
 from latam_jobs.http import HttpClient, HttpError
-from latam_jobs.models import Job, KeywordStatus, LatamEligibility, RemoteStatus
+from latam_jobs.models import ApplyUrlType, Job, KeywordStatus, LatamEligibility, RemoteStatus
 from latam_jobs.pipeline import collect
 from latam_jobs.scheduler import RunLock
 from latam_jobs.settings import settings_from_mapping
@@ -21,6 +22,7 @@ def _job(
     source_job_id: str = "1",
     url: str = "https://example.com/jobs/1?utm_source=newsletter",
     title: str = "Python Developer",
+    published_at: datetime | None = NOW,
 ) -> Job:
     return Job(
         source=source,
@@ -35,6 +37,7 @@ def _job(
         eligibility_reason="accepted:worldwide:colombia: worldwide includes the residence country",
         keyword_status=KeywordStatus.MATCHED,
         keyword_reason="matched 'python' in title",
+        published_at=published_at,
     )
 
 
@@ -249,6 +252,212 @@ def test_lock_prevents_overlap(tmp_path: Path) -> None:
             raise AssertionError("expected the second lock to fail")
     finally:
         first.release()
+
+
+def test_recent_publication_window(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    inserted = store.upsert_jobs(
+        [
+            _job(
+                source_job_id="2h",
+                url="https://example.com/2",
+                title="Two hours",
+                published_at=NOW - timedelta(hours=2),
+            ),
+            _job(
+                source_job_id="23h",
+                url="https://example.com/23",
+                title="Twenty three",
+                published_at=NOW - timedelta(hours=23),
+            ),
+            _job(
+                source_job_id="edge",
+                url="https://example.com/edge",
+                title="Exactly one day",
+                published_at=NOW - timedelta(hours=24),
+            ),
+        ],
+        NOW,
+    )
+    assert inserted == 3
+    skipped = store.upsert_jobs(
+        [
+            _job(
+                source_job_id="25h",
+                url="https://example.com/25",
+                published_at=NOW - timedelta(hours=25),
+            ),
+            _job(source_job_id="missing", url="https://example.com/missing", published_at=None),
+        ],
+        NOW,
+    )
+    assert skipped == 0
+    assert store.get_job("remotive", "25h") is None
+    then = NOW - timedelta(days=10)
+    assert (
+        store.upsert_jobs(
+            [
+                _job(
+                    source_job_id="old",
+                    url="https://example.com/old",
+                    title="Stored earlier",
+                    published_at=then,
+                )
+            ],
+            then,
+        )
+        == 1
+    )
+    listed = store.list_jobs(eligibility="accepted")
+    assert listed[0].source_job_id == "2h"
+    assert any(job.title == "Stored earlier" for job in listed)
+    store.close()
+
+
+def test_apply_url_round_trip_and_migration_default(tmp_path: Path) -> None:
+    database = tmp_path / "legacy.sqlite"
+    connection = sqlite3.connect(database)
+    script = Path("src/latam_jobs/migrations/001_initial.sql").read_text(encoding="utf-8")
+    connection.executescript(script)
+    connection.execute(
+        "INSERT INTO schema_migrations (version, applied_at) VALUES (1, ?)",
+        (NOW.isoformat(timespec="seconds"),),
+    )
+    connection.execute(
+        """
+        INSERT INTO jobs (
+            source, source_job_id, title, company, url, canonical_url, description,
+            tags_json, location_text, location_countries_json, salary, published_at,
+            remote_status, latam_eligibility, eligibility_reason, keyword_status,
+            keyword_reason, notification_status, content_hash, discovered_at, last_seen_at
+        ) VALUES (
+            'remotive', 'legacy', 'Legacy role', 'Example', 'https://remotive.com/jobs/legacy',
+            'https://remotive.com/jobs/legacy', 'backend', '[]', 'Worldwide', '[]', NULL, ?,
+            'remote', 'accepted', 'reason', 'matched', 'matched', 'pending', 'hash', ?, ?
+        )
+        """,
+        (NOW.isoformat(timespec="seconds"),) * 3,
+    )
+    connection.commit()
+    connection.close()
+
+    store = Store(database)
+    store.migrate()
+    legacy = store.get_job("remotive", "legacy")
+    assert legacy is not None
+    assert legacy.apply_url is None
+    assert legacy.apply_url_type == "job_board"
+
+    direct = _job(source_job_id="direct", url="https://remotive.com/jobs/direct")
+    direct.apply_url = "https://boards.greenhouse.io/acme/jobs/1"
+    direct.apply_url_type = ApplyUrlType.DIRECT
+    store.upsert_jobs([direct], NOW)
+    stored = store.get_job("remotive", "direct")
+    assert stored is not None
+    assert stored.apply_url == "https://boards.greenhouse.io/acme/jobs/1"
+    assert stored.apply_url_type == "direct"
+    assert store.list_jobs(application="direct")[0].source_job_id == "direct"
+    assert all(
+        job.apply_url_type == "job_board" for job in store.list_jobs(application="job_board")
+    )
+    store.close()
+
+
+def test_collector_run_records_partial_failure_and_new_jobs(tmp_path: Path) -> None:
+    database = tmp_path / "jobs.sqlite"
+
+    class Ok:
+        name = "ok"
+        default_interval_hours = 12
+        default_enabled = True
+
+        def fetch(self, ctx: FetchContext) -> FetchResult:
+            return FetchResult(jobs=[_job()], status_code=200)
+
+    class Bad:
+        name = "bad"
+        default_interval_hours = 12
+        default_enabled = True
+
+        def fetch(self, ctx: FetchContext) -> FetchResult:
+            raise HttpError("HTTP 500", status_code=500)
+
+    settings = settings_from_mapping(
+        {
+            "keywords": ["python"],
+            "database": {"path": str(database)},
+            "scheduler": {"jitter_seconds": 0},
+            "sources": {
+                "ok": {"enabled": True, "interval_hours": 12},
+                "bad": {"enabled": True, "interval_hours": 12},
+            },
+        }
+    )
+    collect(
+        settings,
+        registry={"ok": Ok(), "bad": Bad()},
+        client=_client(),
+        now=NOW,
+        rng=Random(0),
+    )
+    store = Store(database)
+    partial = store.latest_run()
+    assert partial is not None
+    assert partial.outcome == "partial"
+    assert partial.new_jobs == 1
+    assert partial.sources_ok == 1
+    assert partial.sources_failed == 1
+    assert partial.started_at == NOW
+
+    collect(
+        settings,
+        only_source="bad",
+        registry={"ok": Ok(), "bad": Bad()},
+        client=_client(),
+        now=LATER,
+        rng=Random(0),
+    )
+    failed = store.latest_run()
+    assert failed is not None
+    assert failed.outcome == "failed"
+    assert failed.new_jobs == 0
+    assert store.latest_successful_run() is None
+
+    collect(
+        settings,
+        only_source="ok",
+        registry={"ok": Ok(), "bad": Bad()},
+        client=_client(),
+        now=LATER,
+        rng=Random(0),
+    )
+    success = store.latest_successful_run()
+    assert success is not None
+    assert success.outcome == "success"
+    assert success.new_jobs == 0
+
+    class LaterFailure:
+        name = "ok"
+        default_interval_hours = 12
+        default_enabled = True
+
+        def fetch(self, ctx: FetchContext) -> FetchResult:
+            raise HttpError("HTTP 503", status_code=503)
+
+    after = LATER + timedelta(hours=1)
+    collect(
+        settings,
+        only_source="ok",
+        registry={"ok": LaterFailure(), "bad": Bad()},
+        client=_client(),
+        now=after,
+        rng=Random(0),
+    )
+    kept = store.get_schedule("ok")
+    assert kept is not None
+    assert kept.last_success_at == LATER
+    assert kept.consecutive_failures == 1
+    store.close()
 
 
 def _client() -> HttpClient:

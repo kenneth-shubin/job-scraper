@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -75,6 +76,7 @@ class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     residence_country: str = "colombia"
+    display_timezone: str = "America/Bogota"
     remote_only: bool = True
     keywords: list[str] = Field(default_factory=list)
     exclude_keywords: list[str] = Field(default_factory=list)
@@ -99,6 +101,15 @@ class Settings(BaseModel):
                 f"Unknown residence country {value!r}. Use a Latin American country name or code."
             )
         return slug
+
+    @field_validator("display_timezone")
+    @classmethod
+    def check_display_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError(f"Unknown timezone {value!r}.") from exc
+        return value
 
     @field_validator("keywords", "exclude_keywords")
     @classmethod

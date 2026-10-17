@@ -36,6 +36,7 @@ def _job(
         eligibility_reason="classified",
         keyword_status=KeywordStatus.MATCHED,
         keyword_reason="matched 'backend' in title",
+        published_at=NOW,
     )
 
 

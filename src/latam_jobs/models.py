@@ -27,6 +27,12 @@ class KeywordStatus(StrEnum):
     EXCLUDED = "excluded"
 
 
+class ApplyUrlType(StrEnum):
+    DIRECT = "direct"
+    JOB_BOARD = "job_board"
+    UNKNOWN = "unknown"
+
+
 @dataclass
 class Job:
     source: str
@@ -40,6 +46,8 @@ class Job:
     location_countries: tuple[str, ...] = ()
     salary: str | None = None
     published_at: datetime | None = None
+    apply_url: str | None = None
+    apply_url_type: ApplyUrlType = ApplyUrlType.JOB_BOARD
     remote_status: RemoteStatus = RemoteStatus.UNKNOWN
     latam_eligibility: LatamEligibility | None = None
     eligibility_reason: str = ""
@@ -58,3 +66,4 @@ class Job:
         self.tags = tuple(self.tags)
         self.location_countries = tuple(self.location_countries)
         self.remote_status = RemoteStatus(self.remote_status)
+        self.apply_url_type = ApplyUrlType(self.apply_url_type)

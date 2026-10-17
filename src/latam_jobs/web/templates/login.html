@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Unlock · LATAM jobs</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <main>
+    <section class="panel login">
+      <h1>LATAM jobs</h1>
+      <p>Enter the dashboard password to continue.</p>
+      {% if error %}<p class="errors">{{ error }}</p>{% endif %}
+      <form method="post" action="/login">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label>Password
+          <input type="password" name="password" autocomplete="current-password" required>
+        </label>
+        <button type="submit">Unlock Dashboard</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

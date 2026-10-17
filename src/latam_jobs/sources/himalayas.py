@@ -3,8 +3,10 @@
 Verified endpoint: GET https://himalayas.app/jobs/api/search
 Documentation: https://himalayas.app/docs/remote-jobs-api
 The feed refreshes every 24 hours. Page size is 20. This adapter requests at most
-max_pages recent pages and does not walk the full catalog. Apply links must be
-the API applicationLink, and messages must credit Himalayas.
+max_pages recent pages and does not walk the full catalog. The verified search
+payload's applicationLink is a Himalayas page, not a company or ATS URL, so no
+direct apply link is stored. This adapter does not request job detail pages.
+Messages must credit Himalayas and use the Himalayas URL.
 """
 
 from __future__ import annotations
