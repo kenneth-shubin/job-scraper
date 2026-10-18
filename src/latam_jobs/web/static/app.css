@@ -37,7 +37,7 @@ body {
   letter-spacing: 0.01em;
 }
 
-nav { display: flex; gap: 1rem; }
+nav { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem 1rem; }
 
 nav a { color: #f7f4ef; text-decoration: none; }
 
@@ -68,6 +68,8 @@ h1, h2 {
   margin-bottom: 1rem;
 }
 
+.filters button { width: 100%; }
+
 label.check { flex-direction: row; align-items: center; margin: 0.8rem 0; }
 
 input, select, textarea, button {
@@ -86,7 +88,12 @@ button {
   cursor: pointer;
 }
 
+.table-scroll,
+#job-table { overflow-x: auto; }
+
 table { width: 100%; border-collapse: collapse; }
+
+table.jobs { min-width: 46rem; }
 
 th, td {
   text-align: left;
@@ -111,7 +118,9 @@ a { color: var(--accent); }
 .badge.rejected { background: #f8e1d6; }
 .badge.maybe { background: #f8efc8; }
 
-.actions { display: flex; flex-direction: column; gap: 0.2rem; white-space: nowrap; }
+.actions { width: 1%; white-space: nowrap; }
+
+.action-links { display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; }
 
 .posted { white-space: nowrap; }
 
@@ -136,14 +145,28 @@ a { color: var(--accent); }
 
 .login { max-width: 28rem; margin: 4rem auto; }
 
+.login form { display: flex; flex-direction: column; align-items: stretch; gap: 0.9rem; }
+
+.login-actions { display: flex; }
+
+.login-actions button { width: 100%; margin: 0; }
+
 .empty, .notice, .errors { color: var(--muted); }
 
 .notice { color: var(--accent); }
 
 .errors { color: var(--warn); padding-left: 1.1rem; }
 
-@media (max-width: 800px) {
+@media (max-width: 960px) {
+  .filters { grid-template-columns: 1fr 1fr; }
+  .filters button { grid-column: 1 / -1; }
+}
+
+@media (max-width: 640px) {
+  main { padding: 0.8rem; }
   .filters { grid-template-columns: 1fr; }
   .top { align-items: flex-start; flex-direction: column; }
-  table { display: block; overflow-x: auto; }
+  .login { margin: 1.5rem auto; }
+  .login-actions button { width: 100%; }
+  .settings-form > button { width: 100%; }
 }
