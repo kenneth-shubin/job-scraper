@@ -8,7 +8,7 @@
     {% for error in errors %}<li>{{ error }}</li>{% endfor %}
   </ul>
   {% endif %}
-  <form method="post" action="/settings">
+  <form class="settings-form" method="post" action="/settings">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>Display timezone
       <input type="text" name="display_timezone" value="{{ settings.display_timezone }}">
@@ -35,6 +35,7 @@
       Send Telegram alerts
     </label>
     <h2>Sources</h2>
+    <div class="table-scroll">
     <table>
       <thead>
         <tr><th>Source</th><th>Enabled</th><th>Interval hours</th></tr>
@@ -52,6 +53,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
     <button type="submit">Save settings</button>
   </form>
 </section>

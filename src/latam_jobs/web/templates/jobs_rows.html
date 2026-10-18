@@ -1,4 +1,4 @@
-<table>
+<table class="jobs">
   <thead>
     <tr>
       <th>Title</th>
@@ -18,16 +18,18 @@
       <td class="posted">{{ format_posted(job.published_at, display_timezone, now) }}</td>
       <td>{{ job.source }}</td>
       <td class="actions">
-        {% if job.apply_url_type == "direct" and job.apply_url %}
-        <a href="{{ job.apply_url }}">Apply Directly</a>
-        {% if job.url %}
-        <a href="{{ job.url }}">View Original Job</a>
-        {% endif %}
-        {% elif job.apply_url_type == "career" and job.url %}
-        <a href="{{ job.url }}">View Original Job</a>
-        {% elif job.url %}
-        <a href="{{ job.url }}">Apply on Job Board</a>
-        {% endif %}
+        <div class="action-links">
+          {% if job.apply_url_type == "direct" and job.apply_url %}
+          <a href="{{ job.apply_url }}">Apply Directly</a>
+          {% if job.url %}
+          <a href="{{ job.url }}">View Original Job</a>
+          {% endif %}
+          {% elif job.apply_url_type == "career" and job.url %}
+          <a href="{{ job.url }}">View Original Job</a>
+          {% elif job.url %}
+          <a href="{{ job.url }}">Apply on Job Board</a>
+          {% endif %}
+        </div>
       </td>
     </tr>
     {% else %}
