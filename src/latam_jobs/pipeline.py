@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -26,11 +28,12 @@ from latam_jobs.scheduler import (
 from latam_jobs.settings import (
     ConfigError,
     Settings,
+    SourceSettings,
     merge_registered_sources,
     validate_registered_sources,
 )
 from latam_jobs.sources import SOURCES
-from latam_jobs.sources.base import FetchContext, JobSource, SourceSnapshot
+from latam_jobs.sources.base import FetchContext, FetchResult, JobSource, SourceSnapshot
 from latam_jobs.store import Store, should_store
 from latam_jobs.urls import attach_direct_apply, greenhouse_boards
 
@@ -86,84 +89,53 @@ def collect(
                 client=http,
                 working_path=Path(effective.database.path).parent / "ats-companies.json",
             )
-        for name, adapter in selected:
+        search_terms = tuple(term.strip() for term in effective.keywords if term.strip())
+        first_wave = [(name, adapter) for name, adapter in selected if name != "greenhouse"]
+        second_wave = [(name, adapter) for name, adapter in selected if name == "greenhouse"]
+        for wave in (first_wave, second_wave):
             if stop is not None and stop.stopped:
-                logger.info("stopping before source %s", name)
+                logger.info("stopping before remaining sources")
                 break
-            source_settings = effective.sources.get(name)
-            if source_settings is None:
-                continue
-            schedule = store.get_schedule(name) if store is not None else None
-            if (
-                only_source is None
-                and not ignore_schedule
-                and store is not None
-                and not is_due(schedule, moment)
-            ):
-                logger.info("source %s is not due", name)
-                continue
-            if name == "greenhouse" and store is not None:
-                feeds = list(
-                    dict.fromkeys([*source_settings.feeds, *store.list_boards("greenhouse")])
-                )
-                source_settings = source_settings.model_copy(update={"feeds": feeds})
-            try:
-                result = adapter.fetch(
-                    FetchContext(
-                        client=http,
-                        settings=source_settings,
-                        state=_snapshot(schedule),
-                        search_terms=tuple(
-                            term.strip() for term in effective.keywords if term.strip()
-                        ),
-                        remote_only=effective.remote_only,
-                        catalog=catalog,
-                        now=moment,
+            jobs_to_fetch: list[tuple[str, JobSource, SourceSchedule | None, FetchContext]] = []
+            for name, adapter in wave:
+                source_settings = effective.sources.get(name)
+                if source_settings is None:
+                    continue
+                schedule = store.get_schedule(name) if store is not None else None
+                if (
+                    only_source is None
+                    and not ignore_schedule
+                    and store is not None
+                    and not is_due(schedule, moment)
+                ):
+                    logger.info("source %s is not due", name)
+                    continue
+                if name == "greenhouse" and store is not None:
+                    feeds = list(
+                        dict.fromkeys([*source_settings.feeds, *store.list_boards("greenhouse")])
                     )
-                )
-            except Exception as exc:
-                logger.exception("source %s failed", name)
-                if store is not None:
-                    _record_failure(store, name, moment, exc, schedule)
-                runs.append(SourceRun(name=name, error=str(exc)))
-                continue
-            if store is not None and name != "greenhouse":
-                found: set[str] = set()
-                for item in result.jobs:
-                    found.update(
-                        greenhouse_boards(item.url, item.apply_url or "", item.description)
-                    )
-                if found:
-                    store.remember_boards({"greenhouse": found}, moment)
-            for item in result.jobs:
-                attach_direct_apply(item)
-            jobs = [annotate(item, effective) for item in result.jobs]
-            visible = [job for job in jobs if _keep(job)]
-            if store is not None:
-                inserted += store.upsert_jobs(
-                    [job for job in visible if should_store(job, effective)], moment
-                )
-                store.record_success(
-                    name,
+                    source_settings = source_settings.model_copy(update={"feeds": feeds})
+                context = FetchContext(
+                    client=http,
+                    settings=source_settings,
+                    state=_snapshot(schedule),
+                    search_terms=search_terms,
+                    remote_only=effective.remote_only,
+                    catalog=catalog,
                     now=moment,
-                    next_fetch_at=next_success_at(
-                        moment,
-                        source_settings.interval_hours,
-                        effective.scheduler.jitter_seconds,
-                        randomizer,
-                    ),
-                    etag=result.etag,
-                    last_modified=result.last_modified,
-                    status_code=result.status_code,
                 )
-            runs.append(
-                SourceRun(
-                    name=name,
-                    jobs=visible,
-                    not_modified=result.not_modified,
-                    skipped_items=result.skipped_items,
+                jobs_to_fetch.append((name, adapter, schedule, context))
+            for name, schedule, context, outcome in _fetch_parallel(jobs_to_fetch):
+                if isinstance(outcome, Exception):
+                    if store is not None:
+                        _record_failure(store, name, moment, outcome, schedule)
+                    runs.append(SourceRun(name=name, error=str(outcome)))
+                    continue
+                inserted += _process(
+                    name, outcome, context.settings, effective, store, moment, randomizer, runs
                 )
-            )
+        order = {name: index for index, (name, _adapter) in enumerate(selected)}
+        runs.sort(key=lambda run: order.get(run.name, len(order)))
         if store is not None:
             try:
                 deliver_notifications(store, effective, now=moment)
@@ -191,6 +163,79 @@ def collect(
         if store is not None:
             store.close()
     return runs
+
+
+def _fetch_parallel(
+    work: list[tuple[str, JobSource, SourceSchedule | None, FetchContext]],
+) -> Iterator[tuple[str, SourceSchedule | None, FetchContext, FetchResult | Exception]]:
+    """Fetch each source on its own thread and yield results as they finish.
+
+    Each source still sends one request at a time to its own site, so running
+    sources side by side never raises the request rate against any one host.
+    """
+    if not work:
+        return
+    with ThreadPoolExecutor(max_workers=len(work), thread_name_prefix="source") as pool:
+        futures = {
+            pool.submit(adapter.fetch, context): (name, schedule, context)
+            for name, adapter, schedule, context in work
+        }
+        for future in as_completed(futures):
+            name, schedule, context = futures[future]
+            try:
+                yield name, schedule, context, future.result()
+            except Exception as exc:
+                logger.exception("source %s failed", name, exc_info=exc)
+                yield name, schedule, context, exc
+
+
+def _process(
+    name: str,
+    result: FetchResult,
+    source_settings: SourceSettings,
+    effective: Settings,
+    store: Store | None,
+    moment: datetime,
+    randomizer: Random,
+    runs: list[SourceRun],
+) -> int:
+    inserted = 0
+    if store is not None and name != "greenhouse":
+        found: set[str] = set()
+        for item in result.jobs:
+            found.update(greenhouse_boards(item.url, item.apply_url or "", item.description))
+        if found:
+            store.remember_boards({"greenhouse": found}, moment)
+    for item in result.jobs:
+        attach_direct_apply(item)
+    jobs = [annotate(item, effective) for item in result.jobs]
+    visible = [job for job in jobs if _keep(job)]
+    if store is not None:
+        inserted = store.upsert_jobs(
+            [job for job in visible if should_store(job, effective)], moment
+        )
+        store.record_success(
+            name,
+            now=moment,
+            next_fetch_at=next_success_at(
+                moment,
+                source_settings.interval_hours,
+                effective.scheduler.jitter_seconds,
+                randomizer,
+            ),
+            etag=result.etag,
+            last_modified=result.last_modified,
+            status_code=result.status_code,
+        )
+    runs.append(
+        SourceRun(
+            name=name,
+            jobs=visible,
+            not_modified=result.not_modified,
+            skipped_items=result.skipped_items,
+        )
+    )
+    return inserted
 
 
 def annotate(job: Job, settings: Settings) -> Job:

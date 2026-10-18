@@ -1,4 +1,5 @@
 import sqlite3
+import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from random import Random
@@ -200,6 +201,46 @@ def test_failed_source_does_not_change_another_success(tmp_path: Path) -> None:
         rng=Random(0),
     )
     assert calls == {"ok": 1, "bad": 1}
+
+
+def test_sources_fetch_at_the_same_time(tmp_path: Path) -> None:
+    database = tmp_path / "jobs.sqlite"
+    both_started = threading.Barrier(2, timeout=5)
+
+    class Waits:
+        default_interval_hours = 12
+        default_enabled = True
+
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def fetch(self, ctx: FetchContext) -> FetchResult:
+            both_started.wait()
+            return FetchResult(jobs=[_job(source=self.name)], status_code=200)
+
+    settings = settings_from_mapping(
+        {
+            "keywords": ["python"],
+            "database": {"path": str(database)},
+            "scheduler": {"jitter_seconds": 0},
+            "sources": {
+                "first": {"enabled": True, "interval_hours": 12},
+                "second": {"enabled": True, "interval_hours": 12},
+            },
+        }
+    )
+    runs = collect(
+        settings,
+        registry={"first": Waits("first"), "second": Waits("second")},
+        client=_client(),
+        now=NOW,
+        rng=Random(0),
+    )
+    assert [run.name for run in runs] == ["first", "second"]
+    assert all(run.error is None for run in runs)
+    store = Store(database)
+    assert store.count_jobs() == 2
+    store.close()
 
 
 def test_second_run_updates_last_seen(tmp_path: Path) -> None:
