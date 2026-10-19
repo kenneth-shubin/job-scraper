@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 class GreenhouseSource:
     name = "greenhouse"
-    default_interval_hours = 24
+    default_interval_hours = 2
     default_enabled = True
     default_url = "https://boards-api.greenhouse.io/v1/boards/{board}/jobs"
     default_feeds = ()
@@ -37,19 +37,26 @@ class GreenhouseSource:
         if not boards:
             return FetchResult(jobs=[])
         now = ctx.now or utc_now()
-        pacer = Pacer(ctx.sleeper)
+        pacer = Pacer.for_context(ctx)
         jobs: list[Job] = []
         skipped = 0
         failures = 0
         status_code = None
         for board, url in boards:
+            if pacer.exhausted:
+                logger.warning(
+                    "greenhouse is rate limiting; stopping before greenhouse board %s", board
+                )
+                break
             pacer.wait()
             try:
                 response = ctx.client.get(url)
             except Exception as exc:
+                pacer.record(exc)
                 failures += 1
                 logger.warning("greenhouse board %s failed: %s", board, exc)
                 continue
+            pacer.record(None)
             status_code = response.status_code
             try:
                 payload = response.json()
@@ -67,11 +74,15 @@ class GreenhouseSource:
                     continue
                 if not _listed_recently(item, now, ctx.search_terms):
                     continue
+                if pacer.exhausted:
+                    break
                 pacer.wait()
                 try:
                     detail = ctx.client.get(f"{url.rstrip('/')}/{item['id']}")
+                    pacer.record(None)
                     document = _detail_job(detail.json(), item["id"]) or item
                 except Exception as exc:
+                    pacer.record(exc)
                     skipped += 1
                     logger.warning("greenhouse job %s/%s failed: %s", board, item.get("id"), exc)
                     continue

@@ -14,6 +14,9 @@
       <a href="/">Jobs</a>
       <a href="/settings">Settings</a>
       {% if csrf_token is defined %}
+      {% if not login_page %}
+      <div id="alert-bell" class="alert-bell" hx-get="/alerts/bell" hx-trigger="load" hx-swap="outerHTML"></div>
+      {% endif %}
       <form method="post" action="/logout" class="logout">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit">Logout</button>
@@ -24,5 +27,6 @@
   <main>
     {% block content %}{% endblock %}
   </main>
+  {% if csrf_token is defined and not login_page %}<script src="/static/alerts.js" defer></script>{% endif %}
 </body>
 </html>

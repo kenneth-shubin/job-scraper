@@ -55,8 +55,9 @@ eligibility:
   include_maybe_in_storage: true
   store_rejected: true
 
+# While `latam-jobs serve` runs, every source is collected in the background on its own
+# interval_hours. A random 0..jitter_seconds is added to each next run time.
 scheduler:
-  check_interval_minutes: 60
   jitter_seconds: 120
 
 http:
@@ -75,67 +76,72 @@ notifications:
 
 ats_catalog:
   update_online: true
+  # Company career pages (Greenhouse, Lever, Ashby) send one request at a time per site.
+  # Each request waits pause_seconds plus a random 0..pause_jitter_seconds. A 429 or 5xx
+  # doubles the pause, and three in a row end that pass early.
+  pause_seconds: 1.0
+  pause_jitter_seconds: 1.0
 
+# Intervals follow each site's published request rules. The code enforces a minimum per
+# source (remotive 6, himalayas 24, jobicy 1, getonboard 3, remoteok 6, arbeitnow 6,
+# greenhouse 1, lever 1, ashby 6 hours), so a lower value here still waits that long.
 sources:
   remotive:
+    # Remotive asks for at most 4 requests a day.
     enabled: true
-    interval_hours: 12
+    interval_hours: 6
     url: https://remotive.com/api/remote-jobs
     max_pages: 1
 
   himalayas:
+    # Data refreshes daily. One search per keyword, at most 2 pages, 3 seconds apart.
+    # Set HIMALAYAS_API_KEY in .env for the keyed allowance.
     enabled: true
     interval_hours: 24
     url: https://himalayas.app/jobs/api/search
-    max_pages: 5
+    max_pages: 2
 
   getonboard:
+    # 20 reads per 5 seconds per IP; this sends at most one request a second.
     enabled: true
-    interval_hours: 24
+    interval_hours: 3
     url: https://www.getonbrd.com/api/v0/categories/programming/jobs
     max_pages: 3
 
-  wwr:
-    enabled: true
-    interval_hours: 12
-    url: https://weworkremotely.com/categories/remote-programming-jobs.rss
-    max_pages: 1
-    feeds:
-      - https://weworkremotely.com/categories/remote-programming-jobs.rss
-      - https://weworkremotely.com/categories/remote-devops-sysadmin-jobs.rss
-
   remoteok:
     enabled: false
-    interval_hours: 24
+    interval_hours: 6
     url: https://remoteok.com/api
     max_pages: 1
 
   jobicy:
+    # One geo=latam pass per run, at most 3 cursor pages. Keywords are matched locally.
     enabled: true
-    interval_hours: 12
+    interval_hours: 3
     url: https://jobicy.com/api/v2/remote-jobs
-    max_pages: 2
+    max_pages: 3
 
   arbeitnow:
     enabled: true
-    interval_hours: 12
+    interval_hours: 6
     url: https://www.arbeitnow.com/api/job-board-api
     max_pages: 1
 
   greenhouse:
     enabled: true
-    interval_hours: 24
+    interval_hours: 2
     url: https://boards-api.greenhouse.io/v1/boards/{board}/jobs
     max_pages: 1
 
   lever:
     enabled: true
-    interval_hours: 24
+    interval_hours: 2
     url: https://api.lever.co/v0/postings/{site}
     max_pages: 1
 
   ashby:
+    # Ashby responses are slow, so each request gets a 30 second timeout.
     enabled: true
-    interval_hours: 24
+    interval_hours: 6
     url: https://api.ashbyhq.com/posting-api/job-board/{board}
     max_pages: 1

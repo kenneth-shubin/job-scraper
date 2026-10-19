@@ -21,8 +21,9 @@ def test_sample_file_loads() -> None:
     assert settings.residence_country == "colombia"
     assert settings.remote_only is True
     assert settings.sources["remotive"].enabled is True
-    assert settings.sources["remotive"].interval_hours == 12
+    assert settings.sources["remotive"].interval_hours == 6
     assert settings.sources["himalayas"].interval_hours == 24
+    assert "wwr" not in settings.sources
     assert settings.sources["remoteok"].enabled is False
     assert settings.sources["greenhouse"].enabled is True
     assert settings.sources["greenhouse"].feeds == []
@@ -39,8 +40,29 @@ def test_new_sources_use_adapter_defaults() -> None:
     assert merged.sources["greenhouse"].feeds == []
     assert merged.sources["lever"].enabled is True
     assert merged.sources["ashby"].enabled is True
-    assert merged.sources["jobicy"].max_pages == 2
+    assert merged.sources["jobicy"].max_pages == 3
     assert merged.sources["remoteok"].enabled is False
+    assert "wwr" not in merged.sources
+
+
+def test_sources_without_an_adapter_are_dropped_when_merged() -> None:
+    stored = settings_from_mapping(
+        {"sources": {"wwr": {"enabled": True, "interval_hours": 12}, "remotive": {}}}
+    )
+    merged = merge_registered_sources(stored, SOURCES)
+    assert "wwr" not in merged.sources
+    validate_registered_sources(merged, SOURCES)
+
+
+def test_retired_schedule_keys_still_load() -> None:
+    settings = settings_from_mapping(
+        {
+            "scheduler": {"check_interval_minutes": 60, "jitter_seconds": 30},
+            "ats_catalog": {"scan_every_minutes": 60, "rest_minutes": 10, "pause_seconds": 2},
+        }
+    )
+    assert settings.scheduler.jitter_seconds == 30
+    assert settings.ats_catalog.pause_seconds == 2
 
 
 def test_missing_file(tmp_path: Path) -> None:

@@ -22,6 +22,9 @@ from latam_jobs.urls import listing_links
 
 logger = logging.getLogger(__name__)
 
+# Ashby board responses often take 10 to 25 seconds.
+ASHBY_TIMEOUT_SECONDS = 30.0
+
 _WORKPLACE = {
     "remote": RemoteStatus.REMOTE,
     "hybrid": RemoteStatus.HYBRID,
@@ -32,7 +35,7 @@ _WORKPLACE = {
 
 class AshbySource:
     name = "ashby"
-    default_interval_hours = 24
+    default_interval_hours = 6
     default_enabled = True
     default_url = "https://api.ashbyhq.com/posting-api/job-board/{board}"
     default_feeds = ()
@@ -43,19 +46,24 @@ class AshbySource:
         if not boards:
             return FetchResult(jobs=[])
         now = ctx.now or utc_now()
-        pacer = Pacer(ctx.sleeper)
+        pacer = Pacer.for_context(ctx)
         jobs: list[Job] = []
         skipped = 0
         failures = 0
         status_code = None
         for board, url in boards:
+            if pacer.exhausted:
+                logger.warning("ashby is rate limiting; stopping before ashby board %s", board)
+                break
             pacer.wait()
             try:
-                response = ctx.client.get(url)
+                response = ctx.client.get(url, timeout=ASHBY_TIMEOUT_SECONDS)
             except Exception as exc:
+                pacer.record(exc)
                 failures += 1
                 logger.warning("ashby board %s failed: %s", board, exc)
                 continue
+            pacer.record(None)
             status_code = response.status_code
             try:
                 payload = response.json()

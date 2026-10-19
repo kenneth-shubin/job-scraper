@@ -1,7 +1,9 @@
 """Jobicy public remote-jobs API.
 
 Verified endpoint: GET https://jobicy.com/api/v2/remote-jobs
-Each keyword is requested with geo=latam. The API needs no key. Jobicy asks users
+Jobicy asks for at most one sync pass an hour, so each run is a single geo=latam
+pass that follows the cursor for up to 3 pages. Keywords are matched locally by the
+pipeline. The API needs no key. Jobicy asks users
 of the feed to link back to the job URL in this response. That URL is the Jobicy
 listing. A separate company apply
 URL is stored only when the payload provides one on another host.
@@ -19,13 +21,15 @@ from latam_jobs.urls import listing_links
 
 logger = logging.getLogger(__name__)
 
+MAX_PAGES = 3
+
 
 class JobicySource:
     name = "jobicy"
-    default_interval_hours = 12
+    default_interval_hours = 3
     default_enabled = True
     default_url = "https://jobicy.com/api/v2/remote-jobs"
-    default_max_pages = 2
+    default_max_pages = 3
 
     def fetch(self, ctx: FetchContext) -> FetchResult:
         url = ctx.settings.url or self.default_url
@@ -33,52 +37,42 @@ class JobicySource:
         seen: set[str] = set()
         skipped = 0
         status_code = None
-        terms = _search_terms(ctx.search_terms) or (None,)
-        for term in terms:
-            cursor: str | None = None
-            for _page in range(ctx.settings.max_pages):
-                params = {"count": "50", "geo": "latam"}
-                if term:
-                    params["tag"] = term
-                if cursor:
-                    params["cursor"] = cursor
-                response = ctx.client.get(url, params=params)
-                status_code = response.status_code
-                try:
-                    payload = response.json()
-                except Exception as exc:
-                    raise SourceError("Jobicy returned a document that is not JSON") from exc
-                if not isinstance(payload, dict):
-                    raise SourceError("Jobicy document is not an object")
-                batch = payload.get("jobs")
-                if not isinstance(batch, list):
-                    raise SourceError("Jobicy document is missing a jobs list")
-                if not batch:
-                    break
-                for item in batch:
-                    parsed = _parse_job(item)
-                    if parsed is None:
-                        skipped += 1
-                        continue
-                    if parsed.source_job_id in seen:
-                        continue
-                    seen.add(parsed.source_job_id)
-                    jobs.append(parsed)
-                next_cursor = payload.get("nextCursor")
-                if (
-                    payload.get("hasMore") is not True
-                    or not isinstance(next_cursor, str)
-                    or not next_cursor
-                ):
-                    break
-                cursor = next_cursor
+        cursor: str | None = None
+        for _page in range(min(ctx.settings.max_pages, MAX_PAGES)):
+            params = {"count": "50", "geo": "latam"}
+            if cursor:
+                params["cursor"] = cursor
+            response = ctx.client.get(url, params=params)
+            status_code = response.status_code
+            try:
+                payload = response.json()
+            except Exception as exc:
+                raise SourceError("Jobicy returned a document that is not JSON") from exc
+            if not isinstance(payload, dict):
+                raise SourceError("Jobicy document is not an object")
+            batch = payload.get("jobs")
+            if not isinstance(batch, list):
+                raise SourceError("Jobicy document is missing a jobs list")
+            if not batch:
+                break
+            for item in batch:
+                parsed = _parse_job(item)
+                if parsed is None:
+                    skipped += 1
+                    continue
+                if parsed.source_job_id in seen:
+                    continue
+                seen.add(parsed.source_job_id)
+                jobs.append(parsed)
+            next_cursor = payload.get("nextCursor")
+            if payload.get("hasMore") is not True or not isinstance(next_cursor, str):
+                break
+            if not next_cursor:
+                break
+            cursor = next_cursor
         if skipped:
             logger.info("jobicy skipped %s malformed jobs", skipped)
         return FetchResult(jobs=jobs, status_code=status_code, skipped_items=skipped)
-
-
-def _search_terms(terms: tuple[str, ...]) -> tuple[str, ...]:
-    return tuple(dict.fromkeys(term.strip() for term in terms if term.strip()))
 
 
 def _parse_job(item: object) -> Job | None:

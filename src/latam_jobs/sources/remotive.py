@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 class RemotiveSource:
     name = "remotive"
-    default_interval_hours = 12
+    default_interval_hours = 6
     default_enabled = True
     default_url = "https://remotive.com/api/remote-jobs"
 

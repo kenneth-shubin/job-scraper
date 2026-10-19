@@ -32,7 +32,7 @@ _WORKPLACE = {
 
 class LeverSource:
     name = "lever"
-    default_interval_hours = 24
+    default_interval_hours = 2
     default_enabled = True
     default_url = "https://api.lever.co/v0/postings/{site}"
     default_feeds = ()
@@ -43,19 +43,24 @@ class LeverSource:
         if not sites:
             return FetchResult(jobs=[])
         now = ctx.now or utc_now()
-        pacer = Pacer(ctx.sleeper)
+        pacer = Pacer.for_context(ctx)
         jobs: list[Job] = []
         skipped = 0
         failures = 0
         status_code = None
         for site, url in sites:
+            if pacer.exhausted:
+                logger.warning("lever is rate limiting; stopping before lever site %s", site)
+                break
             pacer.wait()
             try:
                 response = ctx.client.get(url)
             except Exception as exc:
+                pacer.record(exc)
                 failures += 1
                 logger.warning("lever site %s failed: %s", site, exc)
                 continue
+            pacer.record(None)
             status_code = response.status_code
             try:
                 payload = response.json()

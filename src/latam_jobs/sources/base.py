@@ -38,6 +38,7 @@ class HttpClient(Protocol):
         *,
         params: dict[str, str] | None = None,
         headers: dict[str, str] | None = None,
+        timeout: float | None = None,
     ) -> HttpResponse: ...
 
 
@@ -51,6 +52,8 @@ class FetchContext:
     catalog: tuple[CatalogBoard, ...] = ()
     now: datetime | None = None
     sleeper: Callable[[float], None] = time.sleep
+    pause_seconds: float = 0.25
+    pause_jitter_seconds: float = 0.0
 
 
 @dataclass

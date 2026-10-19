@@ -2,8 +2,9 @@
 
 Verified from https://www.getonbrd.com/api-doc.html and a live response:
 GET https://www.getonbrd.com/api/v0/categories/programming/jobs
-The public API needs no key. No published rate limit was found, so this adapter
-requests at most max_pages with per_page=100. Each configured keyword is searched
+The public API needs no key. Reads are limited to 20 every 5 seconds per IP, so this
+adapter sends at most one request a second and requests at most max_pages with
+per_page=100. Each configured keyword is searched
 on the search endpoint, with remote=true when remote_only is on. With no keywords
 it reads the programming category. The payload exposes links.public_url and no
 separate company or ATS URL.
@@ -14,6 +15,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
+from latam_jobs.ats_directory import Pacer
 from latam_jobs.geo import country_slug
 from latam_jobs.locations import country_list_label
 from latam_jobs.models import Job, RemoteStatus
@@ -21,6 +23,7 @@ from latam_jobs.sources.base import FetchContext, FetchResult, SourceError
 from latam_jobs.text import html_to_text
 
 logger = logging.getLogger(__name__)
+PAUSE_SECONDS = 1.0
 _SEARCH_URL = "https://www.getonbrd.com/api/v0/search/jobs"
 
 _MODALITY = {
@@ -34,7 +37,7 @@ _MODALITY = {
 
 class GetOnBoardSource:
     name = "getonboard"
-    default_interval_hours = 24
+    default_interval_hours = 3
     default_enabled = True
     default_url = "https://www.getonbrd.com/api/v0/categories/programming/jobs"
 
@@ -44,9 +47,11 @@ class GetOnBoardSource:
         seen: set[str] = set()
         skipped = 0
         status_code = None
+        pacer = Pacer(ctx.sleeper, PAUSE_SECONDS)
         terms = _search_terms(ctx.search_terms) or (None,)
         for term in terms:
             for page in range(1, ctx.settings.max_pages + 1):
+                pacer.wait()
                 params = {
                     "page": str(page),
                     "per_page": "100",

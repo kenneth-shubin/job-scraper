@@ -522,3 +522,56 @@ def _client() -> HttpClient:
         return httpx.Response(200, json={})
 
     return HttpClient(timeout=5, max_retries=0, transport=httpx.MockTransport(handler))
+
+
+def test_safe_schedule_migration_drops_wwr_and_moves_intervals(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    old = settings_from_mapping(
+        {
+            "scheduler": {"check_interval_minutes": 60},
+            "ats_catalog": {"scan_every_minutes": 60, "rest_minutes": 10},
+            "sources": {
+                "wwr": {"enabled": True, "interval_hours": 12},
+                "remotive": {"enabled": True, "interval_hours": 12},
+                "greenhouse": {"enabled": True, "interval_hours": 24},
+            },
+        }
+    )
+    store.save_settings(old, bootstrap=old)
+    store.upsert_jobs([_job(source="wwr", url="https://weworkremotely.com/1")], NOW)
+    store.record_success(
+        "wwr", now=NOW, next_fetch_at=LATER, etag=None, last_modified=None, status_code=200
+    )
+    store.record_success(
+        "greenhouse",
+        now=NOW,
+        next_fetch_at=NOW + timedelta(hours=24),
+        etag=None,
+        last_modified=None,
+        status_code=200,
+    )
+    script = Path("src/latam_jobs/migrations/007_safe_schedule.sql").read_text(encoding="utf-8")
+    store._apply_migration(1007, script)
+    loaded = store.load_or_seed(old)
+    assert "wwr" not in loaded.sources
+    assert loaded.sources["remotive"].interval_hours == 6
+    assert loaded.sources["greenhouse"].interval_hours == 2
+    assert "himalayas" not in loaded.sources
+    assert store.get_job("wwr", "1") is None
+    assert store.get_schedule("wwr") is None
+    schedule = store.get_schedule("greenhouse")
+    assert schedule is not None
+    assert schedule.next_fetch_at == NOW + timedelta(hours=2)
+    store.close()
+
+
+def test_new_accepted_jobs_start_unseen_and_others_start_seen(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    rejected = _job(source_job_id="2", url="https://example.com/jobs/2")
+    rejected.latam_eligibility = LatamEligibility.REJECTED
+    duplicate = _job(source="himalayas", source_job_id="3")
+    store.upsert_jobs([_job(), rejected, duplicate], NOW)
+    assert store.count_unseen_alerts() == 1
+    assert [job.source_job_id for job in store.list_unseen_alerts()] == ["1"]
+    assert store.get_job("himalayas", "3").alert_seen_at is not None  # type: ignore[union-attr]
+    store.close()

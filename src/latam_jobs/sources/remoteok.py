@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 class RemoteOkSource:
     name = "remoteok"
-    default_interval_hours = 24
+    default_interval_hours = 6
     default_enabled = False
     default_url = "https://remoteok.com/api"
 

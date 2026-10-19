@@ -12,13 +12,11 @@ from latam_jobs.sources.jobicy import JobicySource
 from latam_jobs.sources.lever import LeverSource
 from latam_jobs.sources.remoteok import RemoteOkSource
 from latam_jobs.sources.remotive import RemotiveSource
-from latam_jobs.sources.wwr import WwrSource
 
 SOURCES: dict[str, JobSource] = {
     RemotiveSource.name: RemotiveSource(),
     HimalayasSource.name: HimalayasSource(),
     GetOnBoardSource.name: GetOnBoardSource(),
-    WwrSource.name: WwrSource(),
     RemoteOkSource.name: RemoteOkSource(),
     JobicySource.name: JobicySource(),
     ArbeitnowSource.name: ArbeitnowSource(),

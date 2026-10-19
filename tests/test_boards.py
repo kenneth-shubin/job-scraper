@@ -3,12 +3,13 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 
-from latam_jobs.http import HttpClient
+from latam_jobs.ats_directory import Pacer
+from latam_jobs.http import HttpClient, HttpError
 from latam_jobs.models import ApplyUrlType, Job, KeywordStatus, LatamEligibility, RemoteStatus
 from latam_jobs.pipeline import collect
 from latam_jobs.settings import SourceSettings, settings_from_mapping
 from latam_jobs.sources.arbeitnow import ArbeitnowSource
-from latam_jobs.sources.ashby import AshbySource
+from latam_jobs.sources.ashby import ASHBY_TIMEOUT_SECONDS, AshbySource
 from latam_jobs.sources.base import FetchContext, FetchResult, SourceError
 from latam_jobs.sources.greenhouse import GreenhouseSource
 from latam_jobs.sources.jobicy import JobicySource
@@ -78,23 +79,32 @@ def test_jobicy_maps_a_board_listing_and_follows_the_cursor() -> None:
     assert job.description == "Python"
 
 
-def test_jobicy_searches_latam_for_each_keyword() -> None:
+def test_jobicy_makes_one_latam_pass_whatever_the_keywords() -> None:
     seen: list[dict[str, str]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(dict(request.url.params))
-        return httpx.Response(200, json={"jobs": [], "hasMore": False})
+        cursor = request.url.params.get("cursor")
+        return httpx.Response(
+            200,
+            json={
+                "jobs": [{"id": cursor or "first", "url": "https://jobicy.com/j", "jobTitle": "A"}],
+                "hasMore": True,
+                "nextCursor": f"{cursor or ''}x",
+            },
+        )
 
     JobicySource().fetch(
         FetchContext(
             client=_client(handler),
-            settings=SourceSettings(enabled=True, max_pages=1),
-            search_terms=("python", "django"),
+            settings=SourceSettings(enabled=True, max_pages=20),
+            search_terms=("python", "django", "react"),
         )
     )
     assert seen == [
-        {"count": "50", "geo": "latam", "tag": "python"},
-        {"count": "50", "geo": "latam", "tag": "django"},
+        {"count": "50", "geo": "latam"},
+        {"count": "50", "geo": "latam", "cursor": "x"},
+        {"count": "50", "geo": "latam", "cursor": "xx"},
     ]
 
 
@@ -158,6 +168,74 @@ def test_arbeitnow_reads_remote_and_the_next_page() -> None:
     assert result.jobs[0].apply_url_type is ApplyUrlType.JOB_BOARD
     assert result.jobs[1].remote_status is RemoteStatus.REMOTE
     assert result.jobs[0].published_at is not None
+
+
+def test_greenhouse_slows_down_and_stops_when_rate_limited() -> None:
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(request.url.path)
+        return httpx.Response(429, text="slow down")
+
+    pauses: list[float] = []
+    result = GreenhouseSource().fetch(
+        FetchContext(
+            client=_client(handler),
+            settings=SourceSettings(enabled=True, feeds=["a", "b", "c", "d", "e"]),
+            now=datetime(2026, 10, 17, 22, tzinfo=UTC),
+            sleeper=pauses.append,
+            pause_seconds=1.0,
+        )
+    )
+    assert len(requested) == 3
+    assert pauses == [2.0, 4.0]
+    assert result.jobs == []
+
+
+def test_pacer_slows_down_after_server_errors_and_resets_after_success() -> None:
+    pauses: list[float] = []
+    pacer = Pacer(pauses.append, 1.0)
+    pacer.wait()
+    pacer.record(HttpError("HTTP 503", status_code=503))
+    pacer.wait()
+    pacer.record(HttpError("HTTP 502", status_code=502))
+    pacer.wait()
+    assert pauses == [2.0, 4.0]
+    assert not pacer.exhausted
+    pacer.record(HttpError("HTTP 500", status_code=500))
+    assert pacer.exhausted
+    pacer.record(None)
+    assert not pacer.exhausted
+    pacer.record(HttpError("HTTP 404", status_code=404))
+    pacer.wait()
+    assert pauses[-1] == 8.0
+
+
+def test_ashby_waits_thirty_seconds_for_a_slow_board() -> None:
+    timeouts: list[object] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        timeouts.append(request.extensions["timeout"]["read"])
+        return httpx.Response(200, json={"jobs": []})
+
+    AshbySource().fetch(
+        FetchContext(
+            client=_client(handler),
+            settings=SourceSettings(enabled=True, feeds=["linear"]),
+            sleeper=lambda _seconds: None,
+        )
+    )
+    assert timeouts == [ASHBY_TIMEOUT_SECONDS]
+
+
+def test_board_pause_adds_random_jitter() -> None:
+    pauses: list[float] = []
+    pacer = Pacer(pauses.append, 1.0, 1.0)
+    for _ in range(20):
+        pacer.wait()
+    assert len(pauses) == 19
+    assert all(1.0 <= pause <= 2.0 for pause in pauses)
+    assert len(set(pauses)) > 1
 
 
 def test_greenhouse_keeps_a_good_board_when_another_is_missing() -> None:

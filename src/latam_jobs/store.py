@@ -17,6 +17,9 @@ from latam_jobs.settings import Settings, settings_from_mapping
 from latam_jobs.urls import canonical_url, content_hash
 
 _MIGRATIONS = Path(__file__).parent / "migrations"
+_UNSEEN_ALERT = (
+    "alert_seen_at IS NULL AND latam_eligibility = 'accepted' AND keyword_status = 'matched'"
+)
 
 
 @dataclass
@@ -47,6 +50,7 @@ class StoredJob:
     content_hash: str
     apply_url: str | None = None
     apply_url_type: str = "job_board"
+    alert_seen_at: str | None = None
 
 
 @dataclass
@@ -260,6 +264,52 @@ class Store:
         except Exception:
             self._conn.execute("ROLLBACK")
             raise
+
+    def skip_pending_notifications(self) -> int:
+        """Leave the current Telegram backlog unsent, so only later finds are sent."""
+        cursor = self._conn.execute(
+            "UPDATE jobs SET notification_status = 'backlog' WHERE notification_status = 'pending'"
+        )
+        self._conn.commit()
+        return int(cursor.rowcount)
+
+    def list_unseen_alerts(self, limit: int = 10) -> list[StoredJob]:
+        rows = self._conn.execute(
+            f"""
+            SELECT * FROM jobs
+            WHERE {_UNSEEN_ALERT}
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [_stored_job(row) for row in rows]
+
+    def count_unseen_alerts(self) -> int:
+        row = self._conn.execute(
+            f"SELECT COUNT(*) AS count FROM jobs WHERE {_UNSEEN_ALERT}"
+        ).fetchone()
+        return int(row["count"])
+
+    def mark_alerts_seen(self, now: datetime, *, up_to_id: int) -> int:
+        cursor = self._conn.execute(
+            "UPDATE jobs SET alert_seen_at = ? WHERE alert_seen_at IS NULL AND id <= ?",
+            (to_iso(now), up_to_id),
+        )
+        self._conn.commit()
+        return int(cursor.rowcount)
+
+    def count_new_accepted(self, since: datetime) -> int:
+        row = self._conn.execute(
+            """
+            SELECT COUNT(*) AS count FROM jobs
+            WHERE latam_eligibility = 'accepted'
+              AND keyword_status = 'matched'
+              AND discovered_at >= ?
+            """,
+            (to_iso(since),),
+        ).fetchone()
+        return int(row["count"])
 
     def mark_notification_failed(self, job_ids: list[int], *, give_up: bool) -> None:
         if not job_ids:
@@ -523,6 +573,11 @@ class Store:
         if existing is None:
             if not _within_recent_window(job.published_at, now):
                 return False
+            alerts = (
+                not duplicate
+                and job.latam_eligibility is LatamEligibility.ACCEPTED
+                and job.keyword_status is KeywordStatus.MATCHED
+            )
             self._conn.execute(
                 """
                 INSERT INTO jobs (
@@ -530,10 +585,19 @@ class Store:
                     canonical_url, description, tags_json, location_text, location_countries_json,
                     salary, published_at, remote_status, latam_eligibility, eligibility_reason,
                     keyword_status, keyword_reason, notification_status, content_hash,
-                    discovered_at, last_seen_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    discovered_at, last_seen_at, alert_seen_at
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
                 """,
-                (job.source, job.source_job_id, *shared, moment, moment),
+                (
+                    job.source,
+                    job.source_job_id,
+                    *shared,
+                    moment,
+                    moment,
+                    None if alerts else moment,
+                ),
             )
             return True
         self._conn.execute(
@@ -607,6 +671,11 @@ for _name in (
     "list_pending_notifications",
     "mark_notified",
     "mark_notification_failed",
+    "skip_pending_notifications",
+    "list_unseen_alerts",
+    "count_unseen_alerts",
+    "mark_alerts_seen",
+    "count_new_accepted",
     "update_classification",
     "get_schedule",
     "list_schedules",
@@ -640,8 +709,8 @@ def should_store(job: Job, settings: Settings) -> bool:
 def _notification_status(job: Job, *, duplicate: bool, previous: str | None) -> str:
     if previous == "sent":
         return "sent"
-    if previous == "failed":
-        return "failed"
+    if previous in {"failed", "backlog"}:
+        return previous
     if duplicate:
         return "skipped"
     if (
@@ -680,6 +749,7 @@ def _stored_job(row: sqlite3.Row) -> StoredJob:
         content_hash=row["content_hash"],
         apply_url=row["apply_url"],
         apply_url_type=row["apply_url_type"],
+        alert_seen_at=row["alert_seen_at"],
     )
 
 
