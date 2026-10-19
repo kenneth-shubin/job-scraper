@@ -130,6 +130,15 @@ _EXCLUSIVE = re.compile(
     r"must be located in|live in)\b"
 )
 _EXCEPT = re.compile(r"\b(except|excluding|outside|other than)\b")
+_WORLDWIDE_EXCEPT = re.compile(
+    r"\b(?:worldwide|anywhere|global|globally)\b(?: \w+){0,4}? "
+    r"(?:except|excluding|outside|other than)\b"
+)
+_LOCATION_HEADING = re.compile(
+    r"<h[1-6][^>]*>\s*(?:available|eligible|hiring|approved|open)?\s*locations?\s*:?\s*"
+    r"</h[1-6]>\s*<ul[^>]*>(?P<items>.*?)</ul>",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 @dataclass(frozen=True)
@@ -180,6 +189,9 @@ def classify_eligibility(job: Job, settings: Settings) -> tuple[LatamEligibility
     location = _read_field(job.location_text)
     if location is not None and location.countries:
         return _allow_list(location.countries, residence)
+    listed = _listed_locations(job.description)
+    if listed:
+        return _allow_list(listed, residence)
     exception = _worldwide_exception(combined, residence)
     if exception is not None:
         return exception
@@ -311,10 +323,21 @@ def _from_reading(reading: _FieldReading, residence: str) -> tuple[LatamEligibil
     )
 
 
+def _listed_locations(description: str) -> frozenset[str]:
+    """Countries from an "Available Locations" list, unless the list names a broad region."""
+    match = _LOCATION_HEADING.search(description)
+    if match is None:
+        return frozenset()
+    items = _normalize(re.sub(r"<[^>]+>", "\n", match.group("items")))
+    broad = {"worldwide", "latam", "americas", "south_america"}
+    for phrase, region in _REGION_PHRASES:
+        if region in broad and re.search(rf"\b{re.escape(phrase)}\b", items):
+            return frozenset()
+    return frozenset(_extract_countries(items))
+
+
 def _worldwide_exception(text: str, residence: str) -> tuple[LatamEligibility, str] | None:
-    if not re.search(r"\b(worldwide|anywhere|global)\b", text):
-        return None
-    match = _EXCEPT.search(text)
+    match = _WORLDWIDE_EXCEPT.search(text)
     if match is None:
         return None
     excluded = frozenset(_extract_countries(text[match.end() :]))
