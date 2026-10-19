@@ -39,6 +39,8 @@ from latam_jobs.urls import attach_direct_apply, greenhouse_boards
 
 logger = logging.getLogger(__name__)
 
+BOARD_SOURCES = frozenset({"greenhouse", "lever", "ashby"})
+
 
 @dataclass
 class SourceRun:
@@ -60,6 +62,7 @@ def collect(
     now: datetime | None = None,
     rng: Random | None = None,
     stop: StopFlag | None = None,
+    include: frozenset[str] | None = None,
 ) -> list[SourceRun]:
     adapters = registry if registry is not None else SOURCES
     moment = now or utc_now()
@@ -71,6 +74,8 @@ def collect(
         store.migrate()
         effective = merge_registered_sources(store.load_or_seed(settings), adapters)
     selected = _select_sources(effective, adapters, only_source)
+    if include is not None:
+        selected = [(name, adapter) for name, adapter in selected if name in include]
     owns_client = client is None
     http = client or HttpClient(
         timeout=effective.http.timeout_seconds,
@@ -82,7 +87,7 @@ def collect(
         if store is not None:
             store.delete_expired_jobs(moment)
         catalog = ()
-        if any(name in {"greenhouse", "lever", "ashby"} for name, _adapter in selected):
+        if any(name in BOARD_SOURCES for name, _adapter in selected):
             catalog = load_catalog(
                 effective,
                 now=moment,
@@ -163,6 +168,17 @@ def collect(
         if store is not None:
             store.close()
     return runs
+
+
+def due_sources(
+    settings: Settings, store: Store, names: frozenset[str], now: datetime
+) -> frozenset[str]:
+    """Enabled sources among ``names`` whose schedule and failure backoff allow a fetch now."""
+    return frozenset(
+        name
+        for name, source in settings.sources.items()
+        if name in names and source.enabled and is_due(store.get_schedule(name), now)
+    )
 
 
 def _fetch_parallel(

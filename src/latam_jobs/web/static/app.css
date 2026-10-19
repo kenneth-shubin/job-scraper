@@ -134,6 +134,8 @@ a { color: var(--accent); }
 
 .run-bar p, .run-bar form { margin: 0; }
 
+.run-bar .board-status { flex-basis: 100%; color: var(--muted); font-size: 0.92rem; }
+
 .logout { margin: 0; }
 
 .logout button {

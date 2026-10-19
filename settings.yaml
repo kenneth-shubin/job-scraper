@@ -3,12 +3,51 @@ display_timezone: America/Bogota
 remote_only: true
 
 keywords:
+  - full stack
+  - full-stack
+  - fullstack
+  - software engineer
+  - product engineer
+  - web developer
+  - frontend
+  - front-end
+  - front end
+  - backend
+  - back-end
+  - back end
+  - shopify
+  - e-commerce
+  - ecommerce
+  - react
+  - next.js
+  - node.js
+  - nestjs
+  - typescript
+  - graphql
   - python
   - django
-  - react
-  - backend
+  - data engineer
+  - data engineering
+  - analytics engineer
+  - data analyst
+  - data architect
+  - data platform
+  - etl
+  - elt
+  - airflow
+  - dbt
+  - spark
+  - desarrollador
+  - ingeniero de software
+  - ingeniero de datos
+  - analista de datos
 
 exclude_keywords:
+  - account executive
+  - sales representative
+  - marketing manager
+  - recruiter
+  - trainee
   - clearance
 
 eligibility:

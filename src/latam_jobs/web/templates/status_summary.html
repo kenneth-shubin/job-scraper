@@ -9,4 +9,5 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit">Check for jobs</button>
   </form>
+  {% if board_status %}<p class="board-status">{{ board_status }}</p>{% endif %}
 </section>

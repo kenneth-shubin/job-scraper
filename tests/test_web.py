@@ -13,7 +13,7 @@ from latam_jobs.sources import SOURCES
 from latam_jobs.sources.base import FetchContext, FetchResult
 from latam_jobs.sources.remotive import RemotiveSource
 from latam_jobs.store import Store
-from latam_jobs.web.app import create_app
+from latam_jobs.web.app import create_app, scheduled_check
 from latam_jobs.web.timefmt import format_posted
 
 NOW = datetime(2026, 10, 17, 15, 0, tzinfo=UTC)
@@ -437,6 +437,85 @@ def test_check_button_runs_enabled_sources_now(tmp_path: Path) -> None:
     assert follow is not None
     follow.join(timeout=5)
     assert calls == ["probe", "probe"]
+    store.close()
+
+
+class _Recorder:
+    default_interval_hours = 24
+    default_enabled = True
+
+    def __init__(self, name: str, calls: list[str]) -> None:
+        self.name = name
+        self._calls = calls
+
+    def fetch(self, ctx: FetchContext) -> FetchResult:
+        self._calls.append(self.name)
+        return FetchResult(jobs=[], status_code=200)
+
+
+def _enable(store: Store, bootstrap: Settings, names: list[str]) -> None:
+    current = store.load_or_seed(bootstrap)
+    store.save_settings(
+        current.model_copy(
+            update={
+                "sources": {
+                    name: SourceSettings(enabled=True, interval_hours=24) for name in names
+                },
+                "ats_catalog": current.ats_catalog.model_copy(update={"update_online": False}),
+            }
+        ),
+        bootstrap=bootstrap,
+    )
+
+
+def test_check_button_skips_company_career_pages(tmp_path: Path) -> None:
+    calls: list[str] = []
+    registry = {
+        "remotive": _Recorder("remotive", calls),
+        "greenhouse": _Recorder("greenhouse", calls),
+        "lever": _Recorder("lever", calls),
+    }
+    client, store, bootstrap = _open(tmp_path, registry)
+    _enable(store, bootstrap, ["remotive", "greenhouse", "lever"])
+    client.post("/jobs/run", data={"csrf_token": _csrf(client)}, follow_redirects=False)
+    thread = client.app.state.collector_thread
+    assert thread is not None
+    thread.join(timeout=5)
+    assert calls == ["remotive"]
+    assert client.app.state.board_thread is None
+    summary = client.get("/status/summary")
+    assert "Company career pages: due at the next automatic check." in summary.text
+    store.close()
+
+
+def test_scheduled_check_runs_due_company_pages_in_their_own_lane(tmp_path: Path) -> None:
+    calls: list[str] = []
+    registry = {
+        "remotive": _Recorder("remotive", calls),
+        "greenhouse": _Recorder("greenhouse", calls),
+    }
+    client, store, bootstrap = _open(tmp_path, registry)
+    _enable(store, bootstrap, ["remotive", "greenhouse"])
+    store.record_success(
+        "remotive",
+        now=datetime.now(UTC),
+        next_fetch_at=datetime.now(UTC) + timedelta(hours=12),
+        etag=None,
+        last_modified=None,
+        status_code=200,
+    )
+    scheduled_check(client.app)
+    board_thread = client.app.state.board_thread
+    assert board_thread is not None
+    board_thread.join(timeout=5)
+    assert client.app.state.collector_thread is None
+    assert calls == ["greenhouse"]
+    summary = client.get("/status/summary")
+    assert "Company career pages: next automatic check" in summary.text
+
+    scheduled_check(client.app)
+    assert client.app.state.board_thread is board_thread
+    assert calls == ["greenhouse"]
     store.close()
 
 
