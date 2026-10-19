@@ -310,10 +310,11 @@ def test_jobs_page_shows_apply_links_and_run_status(tmp_path: Path) -> None:
         )
     )
     _unlock(client)
+    posted = datetime.now(UTC)
     direct = _job(
         title="Direct backend",
         url="https://remotive.com/jobs/direct",
-        published_at=NOW,
+        published_at=posted,
     )
     direct.apply_url = "https://boards.greenhouse.io/acme/jobs/1"
     direct.apply_url_type = ApplyUrlType.DIRECT
@@ -328,7 +329,7 @@ def test_jobs_page_shows_apply_links_and_run_status(tmp_path: Path) -> None:
         url="https://jobs.lever.co/spotify/abc",
     )
     career.apply_url_type = ApplyUrlType.CAREER
-    store.upsert_jobs([direct, board, career], NOW)
+    store.upsert_jobs([direct, board, career], posted)
 
     quiet = client.get("/")
     assert quiet.status_code == 200
@@ -339,7 +340,7 @@ def test_jobs_page_shows_apply_links_and_run_status(tmp_path: Path) -> None:
     assert "Last checked: Never" in quiet.text
     assert "New jobs found: 0" in quiet.text
     assert "<th>Posted</th>" in quiet.text
-    assert format_posted(NOW, "America/Bogota", datetime.now(UTC)) in quiet.text
+    assert format_posted(posted, "America/Bogota", datetime.now(UTC)) in quiet.text
     assert "Oct 17, 2026, 10:00 AM" not in quiet.text
     assert "Apply Directly" in quiet.text
     assert "Apply on Job Board" in quiet.text

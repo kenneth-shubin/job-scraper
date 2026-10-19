@@ -324,3 +324,40 @@
   description: You will support US customers during some US time zones.
   expect_eligibility: accepted
   expect_reason: "accepted:worldwide:colombia: worldwide includes the residence country"
+
+- id: available_locations_list_us_and_canada
+  residence_country: colombia
+  title: Senior Software Engineer - Security Platform
+  location_text: Distributed
+  description: >
+    <p>Cloudflare runs an intelligent global network.</p>
+    <h3>Available Locations</h3> <ul> <li>Atlanta, US</li> <li>Austin, US</li>
+    <li>Washington DC, US</li> <li>Canada</li> </ul>
+    <p>Benefits may vary for employees based outside the U.S.</p>
+  expect_eligibility: rejected
+  expect_reason: "rejected:country_allow_list:colombia: restricted to canada, united-states, which does not include colombia"
+
+- id: available_locations_list_with_colombia
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Distributed
+  description: >
+    <h3>Available Locations</h3> <ul> <li>Bogotá, Colombia</li> <li>Mexico City, Mexico</li> </ul>
+  expect_eligibility: accepted
+  expect_reason: "accepted:country_allow_list:colombia: allowed countries include colombia"
+
+- id: distant_global_and_outside_words_are_not_worldwide
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Distributed
+  description: We run a global network. Benefits may vary for employees based outside the U.S.
+  expect_eligibility: maybe
+  expect_reason: "maybe:insufficient:colombia: remote without a geographic eligibility statement"
+
+- id: global_except_list_still_reads_as_worldwide
+  residence_country: colombia
+  title: Backend Engineer
+  location_text: Remote
+  description: Hiring globally except in Russia and Iran.
+  expect_eligibility: accepted
+  expect_reason: "accepted:worldwide:colombia: worldwide includes the residence country"
