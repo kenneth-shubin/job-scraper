@@ -7,6 +7,7 @@ import hmac
 import logging
 import secrets
 import threading
+from collections.abc import Callable
 from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
@@ -21,8 +22,16 @@ from pydantic import ValidationError
 from latam_jobs.geo import COUNTRIES
 from latam_jobs.locations import location_label
 from latam_jobs.models import ApplyUrlType, Job, RemoteStatus
-from latam_jobs.pipeline import annotate, collect
-from latam_jobs.scheduler import LockError, RunLock, from_iso, utc_now
+from latam_jobs.pipeline import BOARD_SOURCES, annotate, collect, due_sources
+from latam_jobs.scheduler import (
+    LockError,
+    RunLock,
+    board_lock_path,
+    earliest_next_fetch,
+    from_iso,
+    run_lock_path,
+    utc_now,
+)
 from latam_jobs.settings import ConfigError, Settings, merge_registered_sources
 from latam_jobs.store import Store, StoredJob
 from latam_jobs.web.auth import (
@@ -32,7 +41,7 @@ from latam_jobs.web.auth import (
     passwords_match,
     session_valid,
 )
-from latam_jobs.web.timefmt import format_posted, format_when
+from latam_jobs.web.timefmt import format_clock, format_posted, format_when
 
 logger = logging.getLogger(__name__)
 _PACKAGE = Path(__file__).parent
@@ -63,6 +72,9 @@ def create_app(
     app.state.collector = threading.Lock()
     app.state.collector_thread = None
     app.state.collector_message = ""
+    app.state.board_collector = threading.Lock()
+    app.state.board_thread = None
+    app.state.board_message = ""
     app.state.collect_finished = 0
     app.state.collect_announced = 0
 
@@ -296,39 +308,119 @@ def _filters(request: Request) -> tuple[str, str, str, str, str]:
 
 
 def _start_collection(app: FastAPI) -> str:
-    if not app.state.collector.acquire(blocking=False):
+    """Run the job-board aggregators now. Company career pages stay on their own schedule."""
+    quick = frozenset(name for name in app.state.registry if name not in BOARD_SOURCES)
+    if not _start_quick(app, quick, ignore_schedule=True):
         return "A check is already running."
+    return "Checking for jobs."
+
+
+def _start_quick(app: FastAPI, include: frozenset[str], *, ignore_schedule: bool) -> bool:
+    if not app.state.collector.acquire(blocking=False):
+        return False
     app.state.collector_message = "Checking for jobs."
 
-    def work() -> None:
-        try:
-            settings = _current_settings(app)
-            lock = RunLock(Path(settings.database.path).with_suffix(".lock"))
-            try:
-                lock.acquire()
-            except LockError:
-                app.state.collector_message = "A check is already running."
-                return
-            try:
-                collect(
-                    settings,
-                    registry=app.state.registry,
-                    ignore_schedule=True,
-                )
-            finally:
-                lock.release()
-            app.state.collector_message = ""
-        except Exception:
-            logger.exception("dashboard collection failed")
-            app.state.collector_message = "The check failed. See the server log."
-        finally:
-            app.state.collect_finished += 1
-            app.state.collector.release()
+    def finish(message: str) -> None:
+        app.state.collector_message = message
+        app.state.collect_finished += 1
+        app.state.collector.release()
 
-    thread = threading.Thread(target=work, name="latam-jobs-run", daemon=True)
+    thread = threading.Thread(
+        target=_collect_in_lane,
+        args=(app, include, ignore_schedule, run_lock_path, finish),
+        name="latam-jobs-run",
+        daemon=True,
+    )
     app.state.collector_thread = thread
     thread.start()
-    return "Checking for jobs."
+    return True
+
+
+def _start_boards(app: FastAPI, include: frozenset[str]) -> bool:
+    if not app.state.board_collector.acquire(blocking=False):
+        return False
+    app.state.board_message = "Checking company career pages in the background."
+
+    def finish(message: str) -> None:
+        app.state.board_message = message
+        app.state.collect_finished += 1
+        app.state.board_collector.release()
+
+    thread = threading.Thread(
+        target=_collect_in_lane,
+        args=(app, include, False, board_lock_path, finish),
+        name="latam-jobs-boards",
+        daemon=True,
+    )
+    app.state.board_thread = thread
+    thread.start()
+    return True
+
+
+def _collect_in_lane(
+    app: FastAPI,
+    include: frozenset[str],
+    ignore_schedule: bool,
+    lock_path: Callable[[Path], Path],
+    finish: Callable[[str], None],
+) -> None:
+    message = ""
+    try:
+        settings = _current_settings(app)
+        lock = RunLock(lock_path(Path(settings.database.path)))
+        try:
+            lock.acquire()
+        except LockError:
+            message = "A check is already running."
+            return
+        try:
+            collect(
+                settings,
+                registry=app.state.registry,
+                ignore_schedule=ignore_schedule,
+                include=include,
+            )
+        finally:
+            lock.release()
+    except Exception:
+        logger.exception("dashboard collection failed")
+        message = "The check failed. See the server log."
+    finally:
+        finish(message)
+
+
+def scheduled_check(app: FastAPI) -> None:
+    """Start every source that is due. Company career pages run on their own lane."""
+    settings = _current_settings(app)
+    store: Store = app.state.store
+    names = frozenset(app.state.registry)
+    now = utc_now()
+    quick = due_sources(settings, store, names - BOARD_SOURCES, now)
+    boards = due_sources(settings, store, names & BOARD_SOURCES, now)
+    if quick:
+        _start_quick(app, quick, ignore_schedule=False)
+    if boards:
+        _start_boards(app, boards)
+
+
+def start_scheduler(app: FastAPI, *, first_delay_seconds: float = 120.0) -> threading.Event:
+    """Check due sources in the background every ``scheduler.check_interval_minutes``."""
+    stop = threading.Event()
+
+    def loop() -> None:
+        if stop.wait(first_delay_seconds):
+            return
+        while True:
+            try:
+                scheduled_check(app)
+            except Exception:
+                logger.exception("scheduled check failed")
+            minutes = _current_settings(app).scheduler.check_interval_minutes
+            if stop.wait(minutes * 60):
+                return
+
+    threading.Thread(target=loop, name="latam-jobs-scheduler", daemon=True).start()
+    return stop
 
 
 def _summary_response(request: Request, app: FastAPI, *, message: str | None = None) -> Response:
@@ -341,10 +433,7 @@ def _summary_response(request: Request, app: FastAPI, *, message: str | None = N
     response = _templates.TemplateResponse(request, "status_summary.html", context)
     if cookie is not None:
         _set_csrf(response, cookie)
-    if (
-        app.state.collect_finished != app.state.collect_announced
-        and not app.state.collector.locked()
-    ):
+    if app.state.collect_finished != app.state.collect_announced:
         app.state.collect_announced = app.state.collect_finished
         response.headers["HX-Trigger"] = "refreshJobs"
     return response
@@ -358,14 +447,34 @@ def _status_context(app: FastAPI) -> dict[str, Any]:
     settings = _current_settings(app)
     store: Store = app.state.store
     latest = store.latest_run()
+    now = utc_now()
+    boards = {
+        name
+        for name, source in settings.sources.items()
+        if name in BOARD_SOURCES and name in app.state.registry and source.enabled
+    }
+    if app.state.board_collector.locked():
+        board_status = app.state.board_message
+    elif boards:
+        upcoming = earliest_next_fetch(store.list_schedules(), boards)
+        if upcoming is None or upcoming <= now:
+            board_status = "Company career pages: due at the next automatic check."
+        else:
+            clock = format_clock(upcoming, settings.display_timezone)
+            board_status = f"Company career pages: next automatic check {clock}."
+        if app.state.board_message:
+            board_status = f"{app.state.board_message} {board_status}"
+    else:
+        board_status = ""
     return {
         "last_checked": format_when(
             None if latest is None else latest.finished_at,
             settings.display_timezone,
-            utc_now(),
+            now,
         ),
         "new_jobs": 0 if latest is None else latest.new_jobs,
         "run_message": app.state.collector_message,
+        "board_status": board_status,
     }
 
 

@@ -69,6 +69,15 @@ def failure_backoff(now: datetime, consecutive_failures: int, status_code: int |
     return now + delay
 
 
+def run_lock_path(database: Path) -> Path:
+    return database.with_suffix(".lock")
+
+
+def board_lock_path(database: Path) -> Path:
+    """Company career pages hold their own lock so a long scan never blocks quick checks."""
+    return database.with_name(f"{database.stem}-boards.lock")
+
+
 class RunLock:
     def __init__(self, path: Path) -> None:
         self.path = path

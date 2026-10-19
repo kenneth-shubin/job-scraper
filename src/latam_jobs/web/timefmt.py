@@ -33,13 +33,16 @@ def format_posted(value: datetime | str | None, timezone: str, now: datetime) ->
 def format_when(value: datetime | None, timezone: str, now: datetime) -> str:
     if value is None:
         return "Never"
+    return f"{format_clock(value, timezone)} ({_relative(value, now)})"
+
+
+def format_clock(value: datetime, timezone: str) -> str:
     local = value.astimezone(ZoneInfo(timezone))
     hour = local.hour % 12 or 12
     suffix = "AM" if local.hour < 12 else "PM"
-    clock = (
+    return (
         f"{_MONTHS[local.month - 1]} {local.day}, {local.year}, {hour}:{local.minute:02d} {suffix}"
     )
-    return f"{clock} ({_relative(value, now)})"
 
 
 def _relative(value: datetime, now: datetime) -> str:

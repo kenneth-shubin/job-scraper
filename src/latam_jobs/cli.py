@@ -8,8 +8,8 @@ import os
 import sys
 from pathlib import Path
 
-from latam_jobs.pipeline import collect, format_job
-from latam_jobs.scheduler import LockError, RunLock, StopFlag
+from latam_jobs.pipeline import BOARD_SOURCES, collect, format_job
+from latam_jobs.scheduler import LockError, RunLock, StopFlag, board_lock_path, run_lock_path
 from latam_jobs.settings import ConfigError, config_path_from_env, load_env_file, load_settings
 from latam_jobs.store import Store
 
@@ -25,18 +25,36 @@ def _cmd_check(args: argparse.Namespace) -> int:
 
 def _cmd_run(args: argparse.Namespace) -> int:
     settings = load_settings(args.config)
-    lock = None
+    locks: list[RunLock] = []
+    include = None
     stop = StopFlag()
-    if not args.dry_run:
-        lock = RunLock(Path(settings.database.path).with_suffix(".lock"))
-        lock.acquire()
-        stop.install()
     try:
-        runs = collect(settings, only_source=args.source, dry_run=args.dry_run, stop=stop)
+        if not args.dry_run:
+            database = Path(settings.database.path)
+            lock = RunLock(run_lock_path(database))
+            lock.acquire()
+            locks.append(lock)
+            boards = RunLock(board_lock_path(database))
+            try:
+                boards.acquire()
+                locks.append(boards)
+            except LockError:
+                if args.source in BOARD_SOURCES:
+                    raise
+                print("Company career pages are already being checked; skipping them.")
+                include = frozenset(settings.sources) - BOARD_SOURCES
+            stop.install()
+        runs = collect(
+            settings,
+            only_source=args.source,
+            dry_run=args.dry_run,
+            stop=stop,
+            include=include,
+        )
     finally:
         stop.close()
-        if lock is not None:
-            lock.release()
+        for held in reversed(locks):
+            held.release()
     for run in runs:
         if run.error:
             print(f"[{run.name}] failed: {run.error}", file=sys.stderr)
@@ -97,7 +115,7 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
 
     from latam_jobs.sources import SOURCES
-    from latam_jobs.web.app import create_app
+    from latam_jobs.web.app import create_app, start_scheduler
 
     bootstrap = load_settings(args.config)
     store = Store(Path(bootstrap.database.path))
@@ -109,7 +127,11 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         secret=secret,
         password=password,
     )
-    uvicorn.run(app, host=bootstrap.web.host, port=bootstrap.web.port)
+    scheduler = start_scheduler(app)
+    try:
+        uvicorn.run(app, host=bootstrap.web.host, port=bootstrap.web.port)
+    finally:
+        scheduler.set()
     return 0
 
 
