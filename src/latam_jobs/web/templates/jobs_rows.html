@@ -12,7 +12,7 @@
   <tbody>
     {% for job in jobs %}
     <tr>
-      <td>{{ job.title }}</td>
+      <td>{{ job.title }}{% if job.alert_seen_at is none and job.latam_eligibility == "accepted" %} <span class="badge new">New</span>{% endif %}</td>
       <td>{{ job.company }}</td>
       <td>{{ location_label(job.location_text, job.location_countries) }}</td>
       <td class="posted">{{ format_posted(job.published_at, display_timezone, now) }}</td>

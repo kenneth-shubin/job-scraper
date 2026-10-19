@@ -10,7 +10,6 @@ from latam_jobs.sources.base import FetchContext, SourceError
 from latam_jobs.sources.getonboard import GetOnBoardSource
 from latam_jobs.sources.himalayas import HimalayasSource
 from latam_jobs.sources.remoteok import RemoteOkSource
-from latam_jobs.sources.wwr import WwrSource
 
 FIXTURES = Path("tests/fixtures")
 
@@ -28,7 +27,7 @@ def _client(body: object, *, json_body: bool = True) -> HttpClient:
 
 def _context(client: HttpClient, **kwargs: object) -> FetchContext:
     settings = SourceSettings(enabled=True, max_pages=1, **kwargs)  # type: ignore[arg-type]
-    return FetchContext(client=client, settings=settings)
+    return FetchContext(client=client, settings=settings, sleeper=lambda _s: None)
 
 
 def test_himalayas_maps_locations_and_skips_bad_items() -> None:
@@ -89,10 +88,14 @@ def test_himalayas_keeps_its_page_cap_and_does_not_send_a_date_filter() -> None:
     client = HttpClient(
         timeout=5, max_retries=0, transport=httpx.MockTransport(handler), sleeper=lambda _s: None
     )
-    settings = SourceSettings(enabled=True, max_pages=2, url="https://himalayas.app/jobs/api")
-    result = HimalayasSource().fetch(FetchContext(client=client, settings=settings))
+    settings = SourceSettings(enabled=True, max_pages=5, url="https://himalayas.app/jobs/api")
+    pauses: list[float] = []
+    result = HimalayasSource().fetch(
+        FetchContext(client=client, settings=settings, sleeper=pauses.append)
+    )
     assert [job.source_job_id for job in result.jobs] == ["1", "2"]
     assert [url.params["page"] for url in seen] == ["1", "2"]
+    assert pauses == [3.0]
     assert {url.params["sort"] for url in seen} == {"recent"}
     assert all("published" not in str(url) for url in seen)
 
@@ -112,6 +115,7 @@ def test_himalayas_sends_each_keyword_as_the_query() -> None:
             client=client,
             settings=SourceSettings(enabled=True, max_pages=1),
             search_terms=("python", "react"),
+            sleeper=lambda _s: None,
         )
     )
     assert seen == ["python", "react"]
@@ -129,15 +133,21 @@ def test_getonboard_searches_remote_jobs_for_each_keyword() -> None:
     client = HttpClient(
         timeout=5, max_retries=0, transport=httpx.MockTransport(handler), sleeper=lambda _s: None
     )
+    pauses: list[float] = []
     GetOnBoardSource().fetch(
         FetchContext(
             client=client,
             settings=SourceSettings(enabled=True, max_pages=1),
-            search_terms=("backend",),
+            search_terms=("backend", "python"),
             remote_only=True,
+            sleeper=pauses.append,
         )
     )
-    assert seen == [("/api/v0/search/jobs", "backend", "true")]
+    assert seen == [
+        ("/api/v0/search/jobs", "backend", "true"),
+        ("/api/v0/search/jobs", "python", "true"),
+    ]
+    assert pauses == [1.0]
 
 
 def test_himalayas_empty_and_malformed() -> None:
@@ -182,39 +192,6 @@ def test_getonboard_empty_and_malformed() -> None:
         pass
     else:
         raise AssertionError("expected a malformed Get on Board document to fail")
-
-
-def test_wwr_parses_region_and_company() -> None:
-    xml = (FIXTURES / "wwr_programming.xml").read_text(encoding="utf-8")
-    result = WwrSource().fetch(
-        _context(_client(xml, json_body=False), feeds=["https://weworkremotely.com/example.rss"])
-    )
-    assert len(result.jobs) == 2
-    first = result.jobs[0]
-    assert first.company == "Humane World for Animals"
-    assert first.title == "Web Designer, eCRM"
-    assert first.location_text == "Anywhere in the World"
-    assert first.url.startswith("https://weworkremotely.com/")
-
-
-def test_wwr_empty_and_malformed_entry() -> None:
-    empty_xml = "<rss><channel><title>We Work Remotely</title></channel></rss>"
-    empty = WwrSource().fetch(_context(_client(empty_xml, json_body=False)))
-    assert empty.jobs == []
-    broken = """
-    <rss><channel>
-      <item><title>Example: Engineer</title><region>Worldwide</region></item>
-    </channel></rss>
-    """
-    result = WwrSource().fetch(_context(_client(broken, json_body=False)))
-    assert result.jobs == []
-    assert result.skipped_items == 1
-    try:
-        WwrSource().fetch(_context(_client("not a feed", json_body=False)))
-    except SourceError:
-        pass
-    else:
-        raise AssertionError("expected a non-feed to fail")
 
 
 def test_remoteok_skips_legal_notice_and_keeps_location() -> None:

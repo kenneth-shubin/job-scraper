@@ -10,19 +10,20 @@ from datetime import datetime
 from pathlib import Path
 from random import Random
 
+from latam_jobs.alerts import deliver_alerts
 from latam_jobs.ats_directory import load_catalog
 from latam_jobs.eligibility import classify_eligibility, resolve_remote_status
 from latam_jobs.filters import match_keywords
 from latam_jobs.http import HttpClient, HttpError
 from latam_jobs.locations import location_label
 from latam_jobs.models import Job, KeywordStatus
-from latam_jobs.notify import deliver_notifications
 from latam_jobs.scheduler import (
     SourceSchedule,
     StopFlag,
     failure_backoff,
     is_due,
     next_success_at,
+    safe_interval_hours,
     utc_now,
 )
 from latam_jobs.settings import (
@@ -63,12 +64,13 @@ def collect(
     rng: Random | None = None,
     stop: StopFlag | None = None,
     include: frozenset[str] | None = None,
+    honor_backoff: bool = False,
 ) -> list[SourceRun]:
     adapters = registry if registry is not None else SOURCES
     moment = now or utc_now()
     randomizer = rng or Random()
     store: Store | None = None
-    effective = settings
+    effective = merge_registered_sources(settings, adapters)
     if not dry_run:
         store = Store(Path(settings.database.path))
         store.migrate()
@@ -115,6 +117,14 @@ def collect(
                 ):
                     logger.info("source %s is not due", name)
                     continue
+                if (
+                    honor_backoff
+                    and schedule is not None
+                    and schedule.backoff_until is not None
+                    and moment < schedule.backoff_until
+                ):
+                    logger.info("source %s is backing off after a failure", name)
+                    continue
                 if name == "greenhouse" and store is not None:
                     feeds = list(
                         dict.fromkeys([*source_settings.feeds, *store.list_boards("greenhouse")])
@@ -128,6 +138,8 @@ def collect(
                     remote_only=effective.remote_only,
                     catalog=catalog,
                     now=moment,
+                    pause_seconds=effective.ats_catalog.pause_seconds,
+                    pause_jitter_seconds=effective.ats_catalog.pause_jitter_seconds,
                 )
                 jobs_to_fetch.append((name, adapter, schedule, context))
             for name, schedule, context, outcome in _fetch_parallel(jobs_to_fetch):
@@ -142,10 +154,7 @@ def collect(
         order = {name: index for index, (name, _adapter) in enumerate(selected)}
         runs.sort(key=lambda run: order.get(run.name, len(order)))
         if store is not None:
-            try:
-                deliver_notifications(store, effective, now=moment)
-            except Exception:
-                logger.exception("notification delivery failed")
+            deliver_alerts(store, effective, moment)
             failed = sum(1 for run in runs if run.error)
             succeeded = len(runs) - failed
             if failed and succeeded:
@@ -235,7 +244,7 @@ def _process(
             now=moment,
             next_fetch_at=next_success_at(
                 moment,
-                source_settings.interval_hours,
+                safe_interval_hours(name, source_settings.interval_hours),
                 effective.scheduler.jitter_seconds,
                 randomizer,
             ),

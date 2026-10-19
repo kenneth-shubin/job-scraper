@@ -12,6 +12,24 @@ from typing import IO, Any
 
 _WEEK = timedelta(days=7)
 
+# Fewest hours between two passes of a source, from each site's published request rules.
+# Neither settings.yaml nor the Settings page can schedule a source more often than this.
+SAFE_MIN_INTERVAL_HOURS: dict[str, int] = {
+    "remotive": 6,
+    "himalayas": 24,
+    "jobicy": 1,
+    "getonboard": 3,
+    "remoteok": 6,
+    "arbeitnow": 6,
+    "greenhouse": 1,
+    "lever": 1,
+    "ashby": 6,
+}
+
+
+def safe_interval_hours(source_name: str, interval_hours: int) -> int:
+    return max(interval_hours, SAFE_MIN_INTERVAL_HOURS.get(source_name, 1))
+
 
 class LockError(Exception):
     """Another collector run already holds the lock."""
@@ -71,11 +89,6 @@ def failure_backoff(now: datetime, consecutive_failures: int, status_code: int |
 
 def run_lock_path(database: Path) -> Path:
     return database.with_suffix(".lock")
-
-
-def board_lock_path(database: Path) -> Path:
-    """Company career pages hold their own lock so a long scan never blocks quick checks."""
-    return database.with_name(f"{database.stem}-boards.lock")
 
 
 class RunLock:

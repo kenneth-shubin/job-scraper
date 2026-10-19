@@ -8,8 +8,8 @@ import os
 import sys
 from pathlib import Path
 
-from latam_jobs.pipeline import BOARD_SOURCES, collect, format_job
-from latam_jobs.scheduler import LockError, RunLock, StopFlag, board_lock_path, run_lock_path
+from latam_jobs.pipeline import collect, format_job
+from latam_jobs.scheduler import LockError, RunLock, StopFlag, run_lock_path
 from latam_jobs.settings import ConfigError, config_path_from_env, load_env_file, load_settings
 from latam_jobs.store import Store
 
@@ -25,36 +25,32 @@ def _cmd_check(args: argparse.Namespace) -> int:
 
 def _cmd_run(args: argparse.Namespace) -> int:
     settings = load_settings(args.config)
-    locks: list[RunLock] = []
-    include = None
+    lock: RunLock | None = None
     stop = StopFlag()
     try:
         if not args.dry_run:
-            database = Path(settings.database.path)
-            lock = RunLock(run_lock_path(database))
-            lock.acquire()
-            locks.append(lock)
-            boards = RunLock(board_lock_path(database))
+            lock = RunLock(run_lock_path(Path(settings.database.path)))
             try:
-                boards.acquire()
-                locks.append(boards)
+                lock.acquire()
             except LockError:
-                if args.source in BOARD_SOURCES:
-                    raise
-                print("Company career pages are already being checked; skipping them.")
-                include = frozenset(settings.sources) - BOARD_SOURCES
+                lock = None
+                print(
+                    "Another collector holds the lock. `latam-jobs serve` collects every "
+                    "source in the background while it runs.",
+                    file=sys.stderr,
+                )
+                return 1
             stop.install()
         runs = collect(
             settings,
             only_source=args.source,
             dry_run=args.dry_run,
             stop=stop,
-            include=include,
         )
     finally:
         stop.close()
-        for held in reversed(locks):
-            held.release()
+        if lock is not None:
+            lock.release()
     for run in runs:
         if run.error:
             print(f"[{run.name}] failed: {run.error}", file=sys.stderr)

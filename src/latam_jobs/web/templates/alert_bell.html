@@ -1,0 +1,32 @@
+<div id="alert-bell" class="alert-bell"
+     hx-get="/alerts/bell"
+     hx-trigger="every 15s [!document.querySelector('#alert-bell details[open]')], alertsSeen from:body"
+     hx-swap="outerHTML">
+  <details>
+    <summary aria-label="{{ alerts.count }} new {{ 'job' if alerts.count == 1 else 'jobs' }}" title="New jobs">
+      <svg class="bell-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+        <path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>
+        <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+      </svg>
+      {% if alerts.count %}<span class="bell-count">{{ alerts.count if alerts.count < 100 else "99+" }}</span>{% endif %}
+    </summary>
+    <div class="bell-panel">
+      {% if alerts.count %}
+      <p class="bell-title">{{ alerts.count }} new {{ "job" if alerts.count == 1 else "jobs" }}</p>
+      <ul>
+        {% for job in alerts.jobs %}
+        <li><a href="{{ job.apply_url or job.url }}">{{ job.title }}</a><span>{{ job.company }}</span></li>
+        {% endfor %}
+      </ul>
+      <form method="post" action="/alerts/seen" hx-post="/alerts/seen" hx-swap="none">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="up_to" value="{{ alerts.newest_id }}">
+        <button type="submit">Mark all seen</button>
+      </form>
+      {% else %}
+      <p class="bell-empty">No new jobs. New accepted matches appear here.</p>
+      {% endif %}
+      <button type="button" id="desktop-alerts" class="secondary" hidden>Enable desktop alerts</button>
+    </div>
+  </details>
+</div>

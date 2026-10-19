@@ -4,16 +4,18 @@ import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from latam_jobs.cli import _cmd_serve
 from latam_jobs.models import ApplyUrlType, Job, KeywordStatus, LatamEligibility, RemoteStatus
+from latam_jobs.scheduler import LockError, RunLock, run_lock_path
 from latam_jobs.settings import DatabaseSettings, Settings, SourceSettings
 from latam_jobs.sources import SOURCES
 from latam_jobs.sources.base import FetchContext, FetchResult
 from latam_jobs.sources.remotive import RemotiveSource
 from latam_jobs.store import Store
-from latam_jobs.web.app import create_app, scheduled_check
+from latam_jobs.web.app import create_app, scheduler_tick, start_scheduler
 from latam_jobs.web.timefmt import format_posted
 
 NOW = datetime(2026, 10, 17, 15, 0, tzinfo=UTC)
@@ -80,6 +82,11 @@ def _open(
     return client, store, bootstrap
 
 
+def _all_seen(store: Store) -> None:
+    """Clear the alert banner so page assertions only see the job table."""
+    store.mark_alerts_seen(datetime.now(UTC), up_to_id=10**9)
+
+
 def _unlock(client: TestClient, password: str = "test-password") -> None:
     page = client.get("/login")
     match = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
@@ -127,6 +134,7 @@ def test_jobs_page_defaults_to_accepted_and_filters(tmp_path: Path) -> None:
         ],
         NOW,
     )
+    _all_seen(store)
     accepted = client.get("/")
     assert accepted.status_code == 200
     assert "Worldwide backend" in accepted.text
@@ -250,6 +258,7 @@ def test_show_filter_is_one_or_three_days_and_older_jobs_are_removed(tmp_path: P
         [_job(source_job_id="fresh", title="Fresh backend", url="https://example.com/jobs/fresh")],
         now,
     )
+    _all_seen(store)
     page = client.get("/")
     assert "Last 24 hours" in page.text
     assert "Last 3 days" in page.text
@@ -330,15 +339,17 @@ def test_jobs_page_shows_apply_links_and_run_status(tmp_path: Path) -> None:
     )
     career.apply_url_type = ApplyUrlType.CAREER
     store.upsert_jobs([direct, board, career], posted)
+    _all_seen(store)
 
     quiet = client.get("/")
     assert quiet.status_code == 200
     assert "Job Scraper Status" not in quiet.text
     assert "Next scheduled check" not in quiet.text
-    assert "Check for jobs" in quiet.text
-    assert 'hx-trigger="every 15s"' in quiet.text
-    assert "Last checked: Never" in quiet.text
-    assert "New jobs found: 0" in quiet.text
+    assert "Check for jobs" not in quiet.text
+    assert 'hx-trigger="every 15s, alertsSeen from:body"' in quiet.text
+    assert "Background search runs while the server is up." in quiet.text
+    assert "Last finished: Never" in quiet.text
+    assert "New jobs in the last 24 hours: 3" in quiet.text
     assert "<th>Posted</th>" in quiet.text
     assert format_posted(posted, "America/Bogota", datetime.now(UTC)) in quiet.text
     assert "Oct 17, 2026, 10:00 AM" not in quiet.text
@@ -386,57 +397,16 @@ def test_jobs_page_shows_apply_links_and_run_status(tmp_path: Path) -> None:
         sources_failed=0,
     )
     status = client.get("/status/summary")
-    assert "New jobs found: 2" in status.text
-    assert "Last checked:" in status.text
-    assert "Oct 17, 2026, 10:00 AM" in status.text
+    assert "Last finished: Oct 17, 2026, 10:00 AM" in status.text
     assert "Scraper status" not in status.text
     assert "Next scheduled check" not in status.text
     store.close()
 
 
-def test_check_button_runs_enabled_sources_now(tmp_path: Path) -> None:
-    started = threading.Event()
-    release = threading.Event()
-    calls: list[str] = []
-
-    class Probe:
-        name = "probe"
-        default_interval_hours = 12
-        default_enabled = True
-
-        def fetch(self, ctx: FetchContext) -> FetchResult:
-            calls.append("probe")
-            started.set()
-            assert release.wait(timeout=5)
-            return FetchResult(jobs=[], status_code=200)
-
-    client, store, bootstrap = _open(tmp_path, {"probe": Probe()})
-    current = store.load_or_seed(bootstrap)
-    store.save_settings(
-        current.model_copy(
-            update={"sources": {"probe": SourceSettings(enabled=True, interval_hours=12)}}
-        ),
-        bootstrap=bootstrap,
-    )
-    denied = client.post("/jobs/run", data={}, follow_redirects=False)
-    assert denied.status_code == 403
-
-    first = client.post("/jobs/run", data={"csrf_token": _csrf(client)}, follow_redirects=False)
-    assert first.status_code == 200
-    assert "Checking for jobs." in first.text
-    assert started.wait(timeout=5)
-    second = client.post("/jobs/run", data={"csrf_token": _csrf(client)}, follow_redirects=False)
-    assert "A check is already running." in second.text
-    release.set()
-    thread = client.app.state.collector_thread
-    assert thread is not None
-    thread.join(timeout=5)
-    assert calls == ["probe"]
-    client.post("/jobs/run", data={"csrf_token": _csrf(client)}, follow_redirects=False)
-    follow = client.app.state.collector_thread
-    assert follow is not None
-    follow.join(timeout=5)
-    assert calls == ["probe", "probe"]
+def test_manual_check_route_is_gone(tmp_path: Path) -> None:
+    client, store, _bootstrap = _open(tmp_path)
+    response = client.post("/jobs/run", data={"csrf_token": _csrf(client)})
+    assert response.status_code in {404, 405}
     store.close()
 
 
@@ -468,54 +438,211 @@ def _enable(store: Store, bootstrap: Settings, names: list[str]) -> None:
     )
 
 
-def test_check_button_skips_company_career_pages(tmp_path: Path) -> None:
+def test_scheduler_starts_one_due_source_per_tick_without_overlap(tmp_path: Path) -> None:
+    started = threading.Event()
+    release = threading.Event()
+    calls: list[str] = []
+
+    class Slow:
+        name = "remotive"
+        default_interval_hours = 6
+        default_enabled = True
+
+        def fetch(self, ctx: FetchContext) -> FetchResult:
+            calls.append("remotive")
+            started.set()
+            assert release.wait(timeout=5)
+            return FetchResult(jobs=[], status_code=200)
+
+    registry = {"remotive": Slow(), "greenhouse": _Recorder("greenhouse", calls)}
+    client, store, bootstrap = _open(tmp_path, registry)
+    _enable(store, bootstrap, ["remotive", "greenhouse"])
+    app = client.app
+
+    first = scheduler_tick(app)
+    assert first is not None
+    assert started.wait(timeout=5)
+    summary = client.get("/status/summary")
+    assert "Checking now: remotive" in summary.text
+
+    second = scheduler_tick(app)
+    assert second is not None
+    second.join(timeout=5)
+    assert calls == ["remotive", "greenhouse"]
+
+    assert scheduler_tick(app) is None
+    release.set()
+    first.join(timeout=5)
+    assert calls == ["remotive", "greenhouse"]
+    assert scheduler_tick(app) is None
+    schedule = store.get_schedule("remotive")
+    assert schedule is not None and schedule.next_fetch_at is not None
+    assert schedule.next_fetch_at >= datetime.now(UTC) + timedelta(hours=24)
+    store.close()
+
+
+def test_scheduler_waits_out_backoff_and_runs_overdue_sources_after_a_restart(
+    tmp_path: Path,
+) -> None:
     calls: list[str] = []
     registry = {
-        "remotive": _Recorder("remotive", calls),
         "greenhouse": _Recorder("greenhouse", calls),
         "lever": _Recorder("lever", calls),
     }
     client, store, bootstrap = _open(tmp_path, registry)
-    _enable(store, bootstrap, ["remotive", "greenhouse", "lever"])
-    client.post("/jobs/run", data={"csrf_token": _csrf(client)}, follow_redirects=False)
-    thread = client.app.state.collector_thread
-    assert thread is not None
-    thread.join(timeout=5)
-    assert calls == ["remotive"]
-    assert client.app.state.board_thread is None
-    summary = client.get("/status/summary")
-    assert "Company career pages: due at the next automatic check." in summary.text
-    store.close()
-
-
-def test_scheduled_check_runs_due_company_pages_in_their_own_lane(tmp_path: Path) -> None:
-    calls: list[str] = []
-    registry = {
-        "remotive": _Recorder("remotive", calls),
-        "greenhouse": _Recorder("greenhouse", calls),
-    }
-    client, store, bootstrap = _open(tmp_path, registry)
-    _enable(store, bootstrap, ["remotive", "greenhouse"])
+    _enable(store, bootstrap, ["greenhouse", "lever"])
+    now = datetime.now(UTC)
     store.record_success(
-        "remotive",
-        now=datetime.now(UTC),
-        next_fetch_at=datetime.now(UTC) + timedelta(hours=12),
+        "greenhouse",
+        now=now - timedelta(hours=30),
+        next_fetch_at=now - timedelta(hours=6),
         etag=None,
         last_modified=None,
         status_code=200,
     )
-    scheduled_check(client.app)
-    board_thread = client.app.state.board_thread
-    assert board_thread is not None
-    board_thread.join(timeout=5)
-    assert client.app.state.collector_thread is None
+    store.record_failure(
+        "lever",
+        now=now,
+        backoff_until=now + timedelta(hours=24),
+        status_code=429,
+        error="HTTP 429",
+        previous=None,
+    )
+    thread = scheduler_tick(client.app)
+    assert thread is not None
+    thread.join(timeout=5)
+    assert scheduler_tick(client.app) is None
     assert calls == ["greenhouse"]
-    summary = client.get("/status/summary")
-    assert "Company career pages: next automatic check" in summary.text
+    settings = client.get("/settings")
+    assert "HTTP 429" in settings.text
+    assert "Due now" not in settings.text
+    store.close()
 
-    scheduled_check(client.app)
-    assert client.app.state.board_thread is board_thread
-    assert calls == ["greenhouse"]
+
+def test_safe_minimum_interval_applies_to_settings_and_schedules(tmp_path: Path) -> None:
+    calls: list[str] = []
+    client, store, bootstrap = _open(tmp_path, {"remotive": _Recorder("remotive", calls)})
+    current = store.load_or_seed(bootstrap)
+    store.save_settings(
+        current.model_copy(
+            update={"sources": {"remotive": SourceSettings(enabled=True, interval_hours=1)}}
+        ),
+        bootstrap=bootstrap,
+    )
+    rejected = _save(
+        client,
+        **{"source-present-remotive": "1", "enabled-remotive": "on", "interval-remotive": "2"},
+    )
+    assert rejected.status_code == 400
+    assert "remotive needs at least 6 hours between checks." in rejected.text
+    page = client.get("/settings")
+    assert 'name="interval-remotive" min="6"' in page.text
+
+    thread = scheduler_tick(client.app)
+    assert thread is not None
+    thread.join(timeout=5)
+    schedule = store.get_schedule("remotive")
+    assert schedule is not None and schedule.next_fetch_at is not None
+    assert schedule.next_fetch_at >= datetime.now(UTC) + timedelta(hours=5, minutes=59)
+    store.close()
+
+
+def test_server_holds_the_run_lock_while_background_search_runs(tmp_path: Path) -> None:
+    client, store, _bootstrap = _open(tmp_path)
+    stop = start_scheduler(client.app, first_delay_seconds=3600)
+    summary = client.get("/status/summary")
+    assert "Background search is on. First check at" in summary.text
+    other = RunLock(run_lock_path(tmp_path / "jobs.sqlite"))
+    with pytest.raises(LockError):
+        other.acquire()
+    stop.set()
+    for _ in range(100):
+        try:
+            other.acquire()
+        except LockError:
+            threading.Event().wait(0.05)
+            continue
+        break
+    else:
+        raise AssertionError("the server kept the run lock after stopping")
+    other.release()
+    store.close()
+
+
+def test_new_accepted_jobs_alert_until_marked_seen(tmp_path: Path) -> None:
+    client, store, _bootstrap = _open(tmp_path)
+    now = datetime.now(UTC)
+    store.upsert_jobs(
+        [
+            _job(source_job_id="a", title="Alert backend", url="https://example.com/jobs/a"),
+            _job(
+                source_job_id="r",
+                title="Rejected backend",
+                url="https://example.com/jobs/r",
+                eligibility=LatamEligibility.REJECTED,
+            ),
+        ],
+        now,
+    )
+    payload = client.get("/alerts").json()
+    assert payload["count"] == 1
+    assert [job["title"] for job in payload["jobs"]] == ["Alert backend"]
+    newest = payload["jobs"][0]["id"]
+
+    page = client.get("/")
+    assert "1 new job" in page.text
+    assert '<span class="badge new">New</span>' in page.text
+    assert 'hx-get="/alerts/bell"' in page.text
+    assert "/static/alerts.js" in page.text
+    assert 'hx-get="/alerts/bell"' in client.get("/settings").text
+    login = TestClient(client.app).get("/login")
+    assert "/alerts/bell" not in login.text
+    assert "/static/alerts.js" not in login.text
+
+    bell = client.get("/alerts/bell")
+    assert '<span class="bell-count">1</span>' in bell.text
+    assert 'aria-label="1 new job"' in bell.text
+    assert "Alert backend" in bell.text
+    assert "Enable desktop alerts" in bell.text
+
+    store.upsert_jobs(
+        [_job(source_job_id="b", title="Later backend", url="https://example.com/jobs/b")],
+        now,
+    )
+    denied = client.post("/alerts/seen", data={"up_to": str(newest)})
+    assert denied.status_code == 403
+    seen = client.post(
+        "/alerts/seen",
+        data={"csrf_token": _csrf(client), "up_to": str(newest)},
+        headers={"HX-Request": "true"},
+    )
+    assert seen.status_code == 204
+    assert seen.headers["HX-Trigger"] == "alertsSeen, refreshJobs"
+    after = client.get("/alerts").json()
+    assert [job["title"] for job in after["jobs"]] == ["Later backend"]
+    store.mark_alerts_seen(now, up_to_id=10**9)
+    empty = client.get("/alerts/bell")
+    assert "bell-count" not in empty.text
+    assert "No new jobs." in empty.text
+    rows = client.get("/jobs/rows?q=Alert")
+    assert "badge new" not in rows.text
+    store.close()
+
+
+def test_turning_on_telegram_sends_only_later_finds(tmp_path: Path) -> None:
+    client, store, _bootstrap = _open(tmp_path)
+    store.upsert_jobs([_job(source_job_id="old", url="https://example.com/jobs/old")], NOW)
+    _save(client, **{"notifications-enabled": "on"})
+    old = store.get_job("remotive", "old")
+    assert old is not None and old.notification_status == "backlog"
+    store.upsert_jobs(
+        [
+            _job(source_job_id="old", url="https://example.com/jobs/old"),
+            _job(source_job_id="new", url="https://example.com/jobs/new"),
+        ],
+        datetime.now(UTC),
+    )
+    assert [job.source_job_id for job in store.list_pending_notifications()] == ["new"]
     store.close()
 
 

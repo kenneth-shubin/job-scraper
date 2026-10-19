@@ -17,10 +17,12 @@ from latam_jobs.urls import listing_links
 
 logger = logging.getLogger(__name__)
 
+MAX_PAGES = 2
+
 
 class ArbeitnowSource:
     name = "arbeitnow"
-    default_interval_hours = 12
+    default_interval_hours = 6
     default_enabled = True
     default_url = "https://www.arbeitnow.com/api/job-board-api"
     default_max_pages = 1
@@ -31,7 +33,7 @@ class ArbeitnowSource:
         seen: set[str] = set()
         skipped = 0
         status_code = None
-        for _page in range(ctx.settings.max_pages):
+        for _page in range(min(ctx.settings.max_pages, MAX_PAGES)):
             if not url:
                 break
             response = ctx.client.get(url)

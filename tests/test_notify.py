@@ -180,7 +180,7 @@ def test_notification_error_does_not_roll_back_stored_jobs(tmp_path: Path, monke
     def boom(*_args: object, **_kwargs: object) -> int:
         raise RuntimeError("telegram down")
 
-    monkeypatch.setattr("latam_jobs.pipeline.deliver_notifications", boom)
+    monkeypatch.setattr("latam_jobs.alerts.deliver_notifications", boom)
     settings = Settings(
         database=DatabaseSettings(path=str(database)),
         keywords=["backend"],

@@ -1,13 +1,23 @@
 <section id="scraper-status" class="run-bar"
          hx-get="/status/summary"
-         hx-trigger="every 15s"
+         hx-trigger="every 15s, alertsSeen from:body"
          hx-swap="outerHTML">
-  <p>Last checked: {{ last_checked }}</p>
-  <p>New jobs found: {{ new_jobs }}</p>
-  {% if run_message %}<p class="notice">{{ run_message }}</p>{% endif %}
-  <form method="post" action="/jobs/run" hx-post="/jobs/run" hx-target="#scraper-status" hx-swap="outerHTML">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button type="submit">Check for jobs</button>
-  </form>
-  {% if board_status %}<p class="board-status">{{ board_status }}</p>{% endif %}
+  <p class="search-status">{{ search_status }}</p>
+  <p>Last finished: {{ last_finished }}</p>
+  <p>New jobs in the last 24 hours: {{ new_today }}</p>
+  {% if alerts.count %}
+  <div class="alert-banner" role="status">
+    <p class="alert-title">{{ alerts.count }} new {{ "job" if alerts.count == 1 else "jobs" }}</p>
+    <ul>
+      {% for job in alerts.jobs[:5] %}
+      <li><a href="{{ job.apply_url or job.url }}">{{ job.title }}</a> · {{ job.company }}</li>
+      {% endfor %}
+    </ul>
+    <form method="post" action="/alerts/seen" hx-post="/alerts/seen" hx-swap="none">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="up_to" value="{{ alerts.newest_id }}">
+      <button type="submit">Mark all seen</button>
+    </form>
+  </div>
+  {% endif %}
 </section>

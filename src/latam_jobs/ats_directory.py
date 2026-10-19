@@ -9,6 +9,8 @@ from __future__ import annotations
 import gzip
 import json
 import logging
+import random
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -23,6 +25,7 @@ DIRECTORY_URL = "https://raw.githubusercontent.com/moonie0201/ats-directory/main
 BOARD_PAUSE_SECONDS = 0.25
 _REFRESH_AFTER = timedelta(hours=24)
 _PROVIDERS = frozenset({"greenhouse", "lever", "ashby"})
+_CATALOG_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -38,17 +41,54 @@ class CatalogDocument:
     boards: tuple[CatalogBoard, ...]
 
 
-class Pacer:
-    """Wait between requests. The first call does not wait."""
+MAX_PAUSE_SECONDS = 30.0
+RATE_LIMIT_STOP_AFTER = 3
 
-    def __init__(self, sleeper) -> None:
+
+class Pacer:
+    """Wait between requests to one site. The first call does not wait.
+
+    Each 429 or 5xx doubles the pause up to ``MAX_PAUSE_SECONDS``. After
+    ``RATE_LIMIT_STOP_AFTER`` such responses in a row, ``exhausted`` is true and
+    the caller stops that site for this run.
+    """
+
+    def __init__(
+        self,
+        sleeper,
+        pause_seconds: float = BOARD_PAUSE_SECONDS,
+        jitter_seconds: float = 0.0,
+        rng: random.Random | None = None,
+    ) -> None:
         self._sleeper = sleeper
+        self._pause = pause_seconds
+        self._jitter = jitter_seconds
+        self._rng = rng or random.Random()
         self._started = False
+        self._limited = 0
+
+    @classmethod
+    def for_context(cls, ctx) -> Pacer:
+        return cls(ctx.sleeper, ctx.pause_seconds, ctx.pause_jitter_seconds)
+
+    @property
+    def exhausted(self) -> bool:
+        return self._limited >= RATE_LIMIT_STOP_AFTER
 
     def wait(self) -> None:
         if self._started:
-            self._sleeper(BOARD_PAUSE_SECONDS)
+            extra = self._rng.uniform(0, self._jitter) if self._jitter else 0.0
+            self._sleeper(self._pause + extra)
         self._started = True
+
+    def record(self, error: Exception | None) -> None:
+        """Slow down after a rate limit or server error; reset the streak after anything else."""
+        status = getattr(error, "status_code", None)
+        if isinstance(status, int) and (status == 429 or 500 <= status < 600):
+            self._limited += 1
+            self._pause = min(MAX_PAUSE_SECONDS, max(self._pause, BOARD_PAUSE_SECONDS) * 2)
+            return
+        self._limited = 0
 
 
 def board_url(board: CatalogBoard) -> str:
@@ -85,6 +125,17 @@ def load_catalog(
     seed_path: Path = SEED_PATH,
 ) -> tuple[CatalogBoard, ...]:
     """Return the local catalog. Refresh it from GitHub only when that option is on."""
+    with _CATALOG_LOCK:
+        return _load_catalog(settings, now, client, working_path, seed_path)
+
+
+def _load_catalog(
+    settings: Settings,
+    now: datetime,
+    client,
+    working_path: Path,
+    seed_path: Path,
+) -> tuple[CatalogBoard, ...]:
     seed = _read(seed_path)
     working = _read(working_path) if working_path.is_file() else None
     current = working if working is not None else seed

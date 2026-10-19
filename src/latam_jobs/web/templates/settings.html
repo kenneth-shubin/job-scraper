@@ -38,17 +38,21 @@
     <div class="table-scroll">
     <table>
       <thead>
-        <tr><th>Source</th><th>Enabled</th><th>Interval hours</th></tr>
+        <tr><th>Source</th><th>Enabled</th><th>Interval hours</th><th>Last run</th><th>Next run</th><th>Last error</th></tr>
       </thead>
       <tbody>
         {% for name, source in settings.sources.items() %}
+        {% set run = runs.get(name) %}
         <tr>
           <td>
             {{ name }}
             <input type="hidden" name="source-present-{{ name }}" value="1">
           </td>
           <td><input type="checkbox" name="enabled-{{ name }}" {% if source.enabled %}checked{% endif %}></td>
-          <td><input type="number" name="interval-{{ name }}" min="1" max="168" value="{{ source.interval_hours }}"></td>
+          <td><input type="number" name="interval-{{ name }}" min="{{ minimums.get(name, 1) }}" max="168" value="{{ source.interval_hours }}"></td>
+          <td class="when">{{ run.last if run else "Never" }}</td>
+          <td class="when">{{ run.next if run else "Due now" }}</td>
+          <td class="error-text">{{ run.error if run else "" }}</td>
         </tr>
         {% endfor %}
       </tbody>

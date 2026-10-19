@@ -8,7 +8,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from latam_jobs.geo import country_slug
 
@@ -40,7 +40,6 @@ class EligibilitySettings(BaseModel):
 class SchedulerSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    check_interval_minutes: int = Field(default=60, ge=1, le=24 * 60)
     jitter_seconds: int = Field(default=120, ge=0, le=3600)
 
 
@@ -74,12 +73,34 @@ class AtsCatalogSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     update_online: bool = True
+    pause_seconds: float = Field(default=1.0, ge=0.25, le=30)
+    pause_jitter_seconds: float = Field(default=1.0, ge=0, le=30)
+
+
+# Keys from older settings documents that no longer do anything. They are dropped on load
+# so a saved document or an older settings.yaml keeps loading.
+_RETIRED_KEYS = {
+    "scheduler": ("check_interval_minutes",),
+    "ats_catalog": ("scan_every_minutes", "rest_minutes"),
+}
 
 
 class Settings(BaseModel):
     """Bootstrap file and the editable collection document share this shape."""
 
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def drop_retired_keys(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        cleaned = dict(value)
+        for section, keys in _RETIRED_KEYS.items():
+            block = cleaned.get(section)
+            if isinstance(block, dict):
+                cleaned[section] = {key: item for key, item in block.items() if key not in keys}
+        return cleaned
 
     residence_country: str = "colombia"
     display_timezone: str = "America/Bogota"
@@ -184,8 +205,8 @@ def validate_registered_sources(settings: Settings, registry: dict[str, Any]) ->
 
 
 def merge_registered_sources(settings: Settings, registry: dict[str, Any]) -> Settings:
-    """Add adapters that are not in the stored document yet, using their defaults."""
-    sources = dict(settings.sources)
+    """Add adapters missing from the stored document, and drop sources that have no adapter."""
+    sources = {name: source for name, source in settings.sources.items() if name in registry}
     for name, adapter in registry.items():
         if name in sources:
             continue

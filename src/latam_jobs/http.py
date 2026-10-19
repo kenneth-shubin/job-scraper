@@ -72,12 +72,14 @@ class HttpClient:
         *,
         params: dict[str, str] | None = None,
         headers: dict[str, str] | None = None,
+        timeout: float | None = None,
     ) -> HttpResponse:
         last_transport_error: Exception | None = None
+        extra = {} if timeout is None else {"timeout": timeout}
         for attempt in range(self._max_retries + 1):
             started = time.perf_counter()
             try:
-                response = self._client.get(url, params=params, headers=headers)
+                response = self._client.get(url, params=params, headers=headers, **extra)
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 last_transport_error = exc
                 logger.info("http GET %s error=%s", _log_target(url), type(exc).__name__)

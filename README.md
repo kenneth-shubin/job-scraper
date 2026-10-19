@@ -15,11 +15,40 @@ uv run latam-jobs serve
 
 Open `http://127.0.0.1:8080` and enter `DASHBOARD_PASSWORD`. The jobs page works with notifications disabled. `latam-jobs run` does not need the password.
 
-Jobicy, Himalayas, and Get on Board are searched with each keyword. Jobicy limits that search to the LATAM geo. Get on Board asks for remote listings when remote-only is on. A job is stored when it was posted or reposted within the last 4 days. The Show filter lists the last 24 hours, or jobs posted on or after the calendar day three days ago in the display timezone. A saved job is removed automatically once it is more than 4 days old. A different-host apply URL shows Apply Directly and View Original Job. When an aggregator listing includes a Greenhouse, Lever, or Ashby link to one opening, that link is the Apply Directly URL. An aggregator listing without that link shows Apply on Job Board only. Greenhouse, Lever, and Ashby boards come from the local company catalog. Online updates are on by default and refresh that catalog every 24 hours; a failed refresh still uses the local file. Company board requests run one at a time with a short pause. A Greenhouse list is opened without the description, and the description is fetched when the title matches a keyword and the post or repost is inside 4 days. A Greenhouse repost is dated from the later of its first publish time and its update time. The jobs page shows when jobs were last checked, how many new accepted jobs that check stored, and a Check for jobs button. The button runs the job-board aggregators right away. Greenhouse, Lever, and Ashby career pages run automatically while `latam-jobs serve` is up: the server checks for due sources two minutes after start and then every `scheduler.check_interval_minutes`, and each career-page source runs once its interval (24 hours by default) has passed. That scan has its own lock, so the button keeps working while it runs, and the jobs page shows when the next career-page check is due. Each row shows how long ago the job was posted. Times use the display timezone from the settings page, which defaults to `America/Bogota`.
+Himalayas and Get on Board are searched with each keyword, and Get on Board asks for remote listings when remote-only is on. Jobicy is read in one LATAM pass per run, and keywords are matched locally. A job is stored when it was posted or reposted within the last 4 days. The Show filter lists the last 24 hours, or jobs posted on or after the calendar day three days ago in the display timezone. A saved job is removed automatically once it is more than 4 days old. A different-host apply URL shows Apply Directly and View Original Job. When an aggregator listing includes a Greenhouse, Lever, or Ashby link to one opening, that link is the Apply Directly URL. An aggregator listing without that link shows Apply on Job Board only. Greenhouse, Lever, and Ashby boards come from the local company catalog. Online updates are on by default and refresh that catalog every 24 hours; a failed refresh still uses the local file. Company board requests run one at a time with a short pause. A Greenhouse list is opened without the description, and the description is fetched when the title matches a keyword and the post or repost is inside 4 days. A Greenhouse repost is dated from the later of its first publish time and its update time. Each row shows how long ago the job was posted. Times use the display timezone from the settings page, which defaults to `America/Bogota`.
+
+## Background search
+
+While `latam-jobs serve` runs, every enabled source is collected automatically on its own interval. There is no manual check button. The scheduler looks every 30 seconds and starts at most one due source per look, so sources start spaced out, and a source never overlaps itself. The jobs page shows what is being checked now, when the last source finished, and how many new accepted jobs arrived in the last 24 hours. The Settings page shows each source's last run, next run, and last error.
+
+Intervals follow each site's published request rules:
+
+| Source | Interval | Requests per run |
+| --- | --- | --- |
+| Remotive | 6 hours | 1 |
+| Himalayas | 24 hours | one search per keyword, at most 2 pages, 3 seconds apart |
+| Jobicy | 3 hours | one LATAM pass, at most 3 cursor pages |
+| Get on Board | 3 hours | one search per keyword, at most 1 request a second |
+| Remote OK | 6 hours | 1 |
+| Arbeitnow | 6 hours | at most 2 pages |
+| Greenhouse, Lever | 2 hours | one board at a time, 1 to 2 seconds apart |
+| Ashby | 6 hours | one board at a time, 30 second timeout |
+
+The code enforces a minimum per source (1 hour for Jobicy, Greenhouse, and Lever; the interval above for the rest), so neither `settings.yaml` nor the Settings page can schedule a site more often. On a career page, a 429 or 5xx doubles the pause, and three in a row end that pass early. A failed source waits out its backoff: 24 hours after a 403 or 429, 1 hour otherwise, doubling per failure up to 7 days. Setting `HIMALAYAS_API_KEY` sends a free Himalayas key for its keyed allowance.
+
+The server holds the collector lock while it runs, so `latam-jobs run` exits with a message instead of collecting at the same time.
+
+### Restarts
+
+Schedules live in SQLite, so a restart continues where the server stopped. The first check runs 2 minutes after startup, and overdue sources then start one at a time, 30 seconds apart. A source that missed several intervals runs once. A pass cut off by a stop never recorded success, so it runs again, and jobs already saved are not stored twice. Backoff from before the stop still applies. The OS releases the lock when the process exits, even after a crash. Jobs are kept for 4 days, so a stop longer than that misses jobs that were posted and closed in the gap.
+
+## Alerts
+
+A new accepted job that matches a keyword raises an alert. Jobs stored before alerts existed, rejected jobs, and duplicates of a stored URL do not. The jobs page shows a banner with the new jobs and a New badge on their rows until you press Mark all seen. Enable desktop alerts asks the browser for permission; after that the page checks `/alerts` every 30 seconds and shows a desktop notification for jobs it has not announced yet. The page must stay open in a tab. Each alert channel sits behind one interface in `src/latam_jobs/alerts.py`, and Telegram is the second channel.
 
 ## Telegram
 `In development`
-Alerts are off until the dashboard's "Send Telegram alerts" switch is on and both `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set. Only accepted keyword matches that have not been sent are included. Messages are plain text, in batches under 3,500 characters, and a batch is marked sent only after Telegram returns HTTP 200.
+Alerts are off until the dashboard's "Send Telegram alerts" switch is on and both `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set. Only accepted keyword matches that have not been sent are included. Turning the switch on holds back jobs found before that moment, so the chat receives only later finds. Messages are plain text, in batches under 3,500 characters, and a batch is marked sent only after Telegram returns HTTP 200.
 
 A crash after Telegram accepts a batch and before SQLite commits can send that batch again on the next run. That is the at-least-once window, and it is limited to one batch. A failed send stays pending and stops the rest of that run. After five failed attempts the row is marked failed. Rows already marked sent are not selected again. Missing credentials leave every pending row unsent.
 
@@ -84,18 +113,16 @@ The dashboard listens on `127.0.0.1:8080`. The password protects that local page
 ## systemd
 
 ```bash
-sudo cp deploy/latam-jobs.service deploy/latam-jobs.timer /etc/systemd/system/
 sudo cp deploy/latam-jobs-web.service /etc/systemd/system/
 sudo cp deploy/latam-jobs-backup.service deploy/latam-jobs-backup.timer /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now latam-jobs.timer
 sudo systemctl enable --now latam-jobs-web.service
 sudo systemctl enable --now latam-jobs-backup.timer
 ```
 
-The collector is a oneshot timer. It runs hourly, waits a random 0–120 seconds, and catches up after a reboot because the timer sets `Persistent=true`. The process also takes an exclusive lock on `/var/lib/latam-jobs/latam-jobs.lock`, so a manual run cannot overlap the timer. On `SIGTERM` it finishes the current source and exits before the next one.
+The web service runs `latam-jobs serve`, which collects every source in the background and holds the exclusive lock on `/var/lib/latam-jobs/latam-jobs.lock`. It restarts on failure (`Restart=on-failure`) and starts again after a reboot, so search resumes without a manual start.
 
-The web service runs `latam-jobs serve` and does not take that lock. It restarts on failure and stays up across reboots. Logs for both units go to journald:
+`deploy/latam-jobs.timer` and `deploy/latam-jobs.service` are for a host without the dashboard. That oneshot runs hourly, waits a random 0–120 seconds, catches up after a reboot because the timer sets `Persistent=true`, and exits 1 while the web service holds the lock. On `SIGTERM` it finishes the current source and exits before the next one. Logs for both units go to journald:
 
 ```bash
 journalctl -u latam-jobs.service -n 100

@@ -3,8 +3,9 @@
 Verified endpoint: GET https://himalayas.app/jobs/api/search
 Documentation: https://himalayas.app/docs/remote-jobs-api
 The feed refreshes every 24 hours. Page size is 20. Each keyword is sent as q.
-This adapter requests at most max_pages recent pages per keyword and does not
-walk the full catalog. The verified search
+This adapter requests at most 2 recent pages per keyword, waits 3 seconds between
+requests, and does not walk the full catalog. HIMALAYAS_API_KEY, when set, is sent
+as a Bearer token for the keyed allowance. The verified search
 payload's applicationLink is a Himalayas page, not a company or ATS URL, so no
 direct apply link is stored. This adapter does not request job detail pages.
 Messages must credit Himalayas and use the Himalayas URL.
@@ -15,6 +16,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
+from latam_jobs.ats_directory import Pacer
 from latam_jobs.geo import country_slug
 from latam_jobs.locations import country_list_label
 from latam_jobs.models import Job
@@ -22,6 +24,9 @@ from latam_jobs.sources.base import FetchContext, FetchResult, SourceError
 from latam_jobs.text import html_to_text
 
 logger = logging.getLogger(__name__)
+
+MAX_PAGES = 2
+PAUSE_SECONDS = 3.0
 
 _EXTRA_SLUGS = {
     "united states": "united-states",
@@ -48,9 +53,11 @@ class HimalayasSource:
         etag = ctx.state.etag
         last_modified = ctx.state.last_modified
         status_code = None
+        pacer = Pacer(ctx.sleeper, PAUSE_SECONDS)
         queries = _search_terms(ctx.search_terms) or (None,)
         for query in queries:
-            for page in range(1, ctx.settings.max_pages + 1):
+            for page in range(1, min(ctx.settings.max_pages, MAX_PAGES) + 1):
+                pacer.wait()
                 headers: dict[str, str] = {}
                 if page == 1 and query is None and ctx.state.etag:
                     headers["If-None-Match"] = ctx.state.etag
